@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "@ant-design/icons": "^6.0.0",
+    "echarts": "^5.6.0",
+    "echarts-for-react": "^3.0.2"
+  }
+}

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户信息更新测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        .form-group {
+            margin: 10px 0;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+
+        button {
+            background: #1890ff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 3px;
+            cursor: pointer;
+            margin: 5px;
+        }
+
+        button:hover {
+            background: #40a9ff;
+        }
+
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 3px;
+        }
+
+        .success {
+            background: #f6ffed;
+            border: 1px solid #b7eb8f;
+            color: #52c41a;
+        }
+
+        .error {
+            background: #fff2f0;
+            border: 1px solid #ffccc7;
+            color: #ff4d4f;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>用户信息更新功能测试</h1>
+
+    <div class="test-section">
+        <h2>1. 获取用户信息</h2>
+        <div class="form-group">
+            <label>Token:</label>
+            <input type="text" id="token" placeholder="请输入登录后的Token">
+        </div>
+        <button onclick="getUserInfo()">获取用户信息</button>
+        <div id="userInfoResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. 更新基本信息</h2>
+        <div class="form-group">
+            <label>邮箱:</label>
+            <input type="email" id="email" placeholder="请输入邮箱">
+        </div>
+        <div class="form-group">
+            <label>手机号:</label>
+            <input type="text" id="phone" placeholder="请输入手机号">
+        </div>
+        <button onclick="updateProfile()">更新基本信息</button>
+        <div id="profileResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. 修改密码</h2>
+        <div class="form-group">
+            <label>原密码:</label>
+            <input type="password" id="oldPassword" placeholder="请输入原密码">
+        </div>
+        <div class="form-group">
+            <label>新密码:</label>
+            <input type="password" id="newPassword" placeholder="请输入新密码">
+        </div>
+        <div class="form-group">
+            <label>确认新密码:</label>
+            <input type="password" id="confirmPassword" placeholder="请再次输入新密码">
+        </div>
+        <button onclick="updatePassword()">修改密码</button>
+        <div id="passwordResult"></div>
+    </div>
+
+    <script>
+        function showResult(elementId, message, isSuccess) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = message;
+            element.className = 'result ' + (isSuccess ? 'success' : 'error');
+        }
+
+        async function getUserInfo() {
+            const token = document.getElementById('token').value;
+            if (!token) {
+                showResult('userInfoResult', '请输入Token', false);
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:8000/me', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('userInfoResult',
+                        `获取成功:<br>
+                        用户名: ${data.username}<br>
+                        真实姓名: ${data.real_name}<br>
+                        邮箱: ${data.email || '未设置'}<br>
+                        手机号: ${data.phone || '未设置'}<br>
+                        角色: ${data.role}`, true);
+                } else {
+                    const error = await response.json();
+                    showResult('userInfoResult', `获取失败: ${error.detail}`, false);
+                }
+            } catch (error) {
+                showResult('userInfoResult', `请求失败: ${error.message}`, false);
+            }
+        }
+
+        async function updateProfile() {
+            const token = document.getElementById('token').value;
+            const email = document.getElementById('email').value;
+            const phone = document.getElementById('phone').value;
+
+            if (!token) {
+                showResult('profileResult', '请输入Token', false);
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:8000/me/profile', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        email: email || null,
+                        phone: phone || null
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('profileResult',
+                        `更新成功:<br>
+                        邮箱: ${data.email || '未设置'}<br>
+                        手机号: ${data.phone || '未设置'}`, true);
+                } else {
+                    const error = await response.json();
+                    showResult('profileResult', `更新失败: ${error.detail}`, false);
+                }
+            } catch (error) {
+                showResult('profileResult', `请求失败: ${error.message}`, false);
+            }
+        }
+
+        async function updatePassword() {
+            const token = document.getElementById('token').value;
+            const oldPassword = document.getElementById('oldPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+
+            if (!token) {
+                showResult('passwordResult', '请输入Token', false);
+                return;
+            }
+
+            if (newPassword !== confirmPassword) {
+                showResult('passwordResult', '两次输入的密码不一致', false);
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:8000/me/password', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        old_password: oldPassword,
+                        new_password: newPassword
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('passwordResult', `密码修改成功: ${data.msg}`, true);
+                } else {
+                    const error = await response.json();
+                    showResult('passwordResult', `密码修改失败: ${error.detail}`, false);
+                }
+            } catch (error) {
+                showResult('passwordResult', `请求失败: ${error.message}`, false);
+            }
+        }
+    </script>
+</body>
+
+</html>

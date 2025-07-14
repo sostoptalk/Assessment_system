@@ -1,0 +1,9 @@
+{
+    "python.languageServer": "None",
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportAttributeAccessIssue": "none"
+    },
+    "cursorpyright.analysis.diagnosticSeverityOverrides": {
+        "reportAttributeAccessIssue": "none"
+    }
+}

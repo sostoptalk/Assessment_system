@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>管理潜质测评报告</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'SimHei', 'Microsoft YaHei', sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            margin: 0 auto;
+            padding: 10px;
+            max-width: 800px;
+            line-height: 1.4;
+            color: #333;
+            background-color: #fff;
+            font-size: 14px;
+            background: linear-gradient(to bottom, #f9fbfd, #fff);
+        }
+        header {
+            border-bottom: 1px solid #2c3e50;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+            text-align: center;
+            background-color: white;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        h1 {
+            color: #2c3e50;
+            margin: 5px 0;
+            font-size: 22px;
+            background: linear-gradient(135deg, #3498db, #2c3e50);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            padding: 5px 0;
+        }
+        h2 {
+            color: #3498db;
+            border-bottom: 2px solid #3498db;
+            padding: 5px 10px;
+            margin: 12px 0 5px 0; /* 减小外边距 */
+            font-size: 18px;
+            border-radius: 4px;
+            background-color: rgba(52, 152, 219, 0.08);
+        }
+        h3 {
+            color: #2c3e50;
+            margin: 12px 0 5px 0; /* 减小外边距 */
+            font-size: 16px;
+            padding-left: 8px;
+            border-left: 3px solid #3498db;
+        }
+        h4 {
+            color: #2c3e50;
+            margin: 10px 0 4px 0; /* 减小外边距 */
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .section {
+            margin-bottom: 12px; /* 减小底部边距 */
+            background: #ffffff;
+            padding: 12px; /* 减小内边距 */
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); /* 减小阴影 */
+            border: 1px solid #eef1f5;
+        }
+        .reading-guide {
+            background: linear-gradient(135deg, #f5f9ff, #e8f4ff);
+            border-radius: 8px;
+            border: 1px solid #d9e9ff;
+            padding: 18px; /* 减小内边距 */
+            margin-bottom: 15px; /* 减小底部边距 */
+        }
+        .evaluation-box {
+            background: #f8f9fa;
+            border-left: 4px solid #3498db;
+            padding: 10px 12px; /* 减小内边距 */
+            margin: 5px 0;
+            border-radius: 0 6px 6px 0;
+            line-height: 1.4;
+        }
+        .highlight-box {
+            background: linear-gradient(to right, rgba(255,255,255,0.95), rgba(255,253,228,0.9));
+            border: 1px solid #ffeb3b;
+            border-radius: 8px;
+            padding: 10px; /* 减小内边距 */
+            margin: 10px 0; /* 减小外边距 */
+            box-shadow: 0 2px 8px rgba(255,204,0,0.1); /* 减小阴影 */
+        }
+        .performance-indicator {
+            display: flex;
+            align-items: center;
+            margin: 5px 0 10px 0; /* 减小外边距 */
+            padding: 8px 10px; /* 减小内边距 */
+            border-radius: 6px;
+            background: #f8f9fc;
+            border: 1px dashed #c5d9f1;
+            flex-wrap: wrap;
+        }
+        .performance-indicator > div {
+            margin-right: 12px; /* 减小间距 */
+        }
+        .performance-tag {
+            padding: 4px 10px; /* 减小内边距 */
+            border-radius: 20px;
+            font-weight: bold;
+            text-align: center;
+            font-size: 12px;
+            min-width: 75px; /* 减小宽度 */
+            border: 1px solid rgba(0,0,0,0.1);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03); /* 减小阴影 */
+        }
+        .high-performance {
+            background: linear-gradient(135deg, #4CAF50, #388E3C);
+            color: white;
+        }
+        .high_medium-performance {
+            background: linear-gradient(135deg, #FFC107, #FF9800);
+            color: white;
+        }
+        .medium-performance {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: #fff;
+        }
+        .low-performance {
+            background: linear-gradient(135deg, #F44336, #D32F2F);
+            color: #fff;
+        }
+        .dimension {
+            background: #f5f8fa;
+            padding: 12px; /* 减小内边距 */
+            border-radius: 6px;
+            margin: 8px 0; /* 减小外边距 */
+            border-left: 4px solid #2c3e50;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.02); /* 减小阴影 */
+        }
+        .dimension:before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, #3498db, #2c3e50);
+        }
+        .emphasis {
+            font-weight: bold;
+            color: #d35400;
+            font-size: 13px;
+        }
+        .list-style-check {
+            list-style: none;
+            padding-left: 18px; /* 减小内边距 */
+        }
+        .list-style-check li {
+            position: relative;
+            margin-bottom: 6px; /* 减小间距 */
+            line-height: 1.4; /* 减小行高 */
+        }
+        .list-style-check li:before {
+            content: "✓";
+            position: absolute;
+            left: -18px; /* 减小位置 */
+            top: 0;
+            color: #3498db;
+            font-weight: bold;
+            font-size: 14px; /* 减小尺寸 */
+        }
+        footer {
+            text-align: center;
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 20px; /* 减小外边距 */
+            padding: 15px 0 8px; /* 减小内边距 */
+            border-top: 2px solid #ecf0f1;
+        }
+
+        /* 图片样式 */
+        img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 10px auto; /* 减小外边距 */
+            border: 1px solid #e0e7ff;
+            border-radius: 6px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05); /* 减小阴影 */
+        }
+
+        /* 维度头部样式 */
+        .dimension-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px; /* 减小边距 */
+            padding-bottom: 5px; /* 减小边距 */
+            border-bottom: 1px solid #ecf0f5;
+        }
+
+        /* 子维度样式 - 紧凑优化 */
+        .sub-dimensions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); /* 减小最小宽度 */
+            gap: 12px; /* 减小间隙 */
+            margin-top: 5px; /* 减小外边距 */
+        }
+
+        .sub-dimension {
+            background: white;
+            border-radius: 6px; /* 减小圆角 */
+            padding: 10px; /* 减小内边距 */
+            box-shadow: 0 1px 4px rgba(0,0,0,0.04); /* 减小阴影 */
+            border: 1px solid #eaeef5;
+        }
+        .sub-dimension:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08); /* 减小阴影 */
+        }
+
+        .sub-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px; /* 减小间距 */
+        }
+
+        .sub-evaluation {
+            background: #f9fbfd;
+            padding: 3px; /* 减小内边距 */
+            border-radius: 4px; /* 减小圆角 */
+            margin-top: 6px; /* 减小间距 */
+            border: 1px dashed #d9e9ff;
+        }
+
+        .trait, .work-tendency {
+            margin-bottom: 6px; /* 减小间距 */
+            line-height: 1.4; /* 减小行高 */
+        }
+
+        .evaluation-summary {
+            background: linear-gradient(to right, rgba(241,248,255,0.9), rgba(241,248,255,0.7));
+            padding: 12px; /* 减小内边距 */
+            border-left: 4px solid #4dabf5;
+            margin-bottom: 5px; /* 减小间距 */
+            border-radius: 0 6px 6px 0; /* 减小圆角 */
+            font-size: 13px; /* 减小字体 */
+            line-height: 1.4; /* 减小行高 */
+        }
+
+        .evaluation-summary h4 {
+            margin-top: 0;
+            color: #2c3e50;
+            font-size: 13px; /* 减小字体 */
+        }
+
+        /* 图标样式 - 更小 */
+        .icon {
+            display: inline-block;
+            width: 18px; /* 减小尺寸 */
+            height: 18px; /* 减小尺寸 */
+            background-color: #3498db;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 18px; /* 调整行高 */
+            margin-right: 6px; /* 减小间距 */
+            font-size: 12px; /* 减小字体 */
+        }
+
+        /* 阅读指南标题装饰 */
+        .section-title {
+            position: relative;
+            padding-left: 24px;
+            margin-bottom: 12px; /* 减小间距 */
+        }
+        .section-title:before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 16px; /* 减小尺寸 */
+            height: 16px; /* 减小尺寸 */
+            background-color: #3498db;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px; /* 减小间距 */
+        }
+        .section-title:after {
+            content: "";
+            position: absolute;
+            left: 7px; /* 调整位置 */
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px;
+            height: 4px;
+            background-color: white;
+            border-radius: 50%;
+        }
+
+        /* 报告原则装饰 */
+        .principle-item {
+            position: relative;
+            padding-left: 25px; /* 减小内边距 */
+            margin-bottom: 10px; /* 减小间距 */
+            line-height: 1.4; /* 减小行高 */
+            font-size: 13px; /* 减小字体 */
+        }
+        .principle-item:before {
+            content: "◆";
+            position: absolute;
+            left: 0;
+            top: -1px;
+            color: #3498db;
+            font-size: 16px; /* 减小尺寸 */
+        }
+
+        /* 去除维度间的额外间距 */
+        .dimension + .dimension {
+            margin-top: -5px; /* 负外边距减小间距 */
+        }
+
+        /* 统一紧凑类 */
+        .compact {
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+        .compact-top {
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>管理潜质测评报告</h1>
+        <p><strong>姓名：</strong>{{ user_info.name }}</p>
+        <p><strong>测评日期：</strong>2025年5月</p>
+    </header>
+
+    <!-- 阅读指南部分 - 紧凑优化 -->
+    <div class="section reading-guide compact">
+        <h2 class="section-title">阅读指南</h2>
+
+        <h3 class="compact-top">管理潜质说明</h3>
+        <p class="compact">管理潜质，代表了在更重要或更具有挑战的领导角色上有高绩效表现的发展可能性，是个体在管理序列上发展的动力和适应未来管理职位中复杂人际和事务的个性特点。</p>
+
+        <div class="highlight-box compact">
+            <p class="compact">具备管理潜质的高潜人才，被认为是有很大可能在领导力通道上快速发展，并且能在更高一级的领导角色上表现出高绩效的核心员工。他们乐于并期望去学习新技能和知识，以不断应对新环境的变化和挑战。</p>
+        </div>
+
+        <p class="compact">能否准确识别高潜质人才，直接影响到企业培养和建设管理梯队的效率和成败。为此，我司运营管理中心-人力资源部专门研发了考察管理潜质的测评工具，反映受测者 4 大方面 12 项管理潜质的水平。包括：自我成长与发展、管理动力、管理他人、管理事务。</p>
+
+        <p class="compact">其中，管理动力和自我成长与发展是促进个体在管理方面成长的基本潜质，管理他人和管理事务分别对管理过程 2 大核心管理问题处理复杂人际、处理复杂业务起重要的作用。</p>
+
+        <h3 class="compact">报告阅读原则</h3>
+
+        <div class="principle-item compact">
+            本报告测评结果使用 1-10 的标准分，越靠近 10 分，越接近高分表现；越靠近 1 分，则越接近低分表现。
+        </div>
+
+        <div class="principle-item compact">
+            分数是相对数值，是与常模群体中的中基层储备管理人员进行比较后的得分，得分本身并无好坏之分，无论较高或较低，都有正反两面的影响，因此，您应当根据工作岗位、团队人员特点及企业所处发展阶段、商业环境等因素，综合看待得分并进行阐释，而不是单纯关注得分高低。
+        </div>
+
+        <div class="performance-indicator compact">
+            <li class="performance-tag compact high-performance">高潜力(8.5-10)</li>
+            <li class="performance-tag compact high_medium-performance">中高潜力(7.5-8.4)</li>
+            <li class="performance-tag compact medium-performance">中等潜力(6.5-7.4)</li>
+            <li class="performance-tag compact low-performance">基础潜力(1-6.4)</li>
+        </div>
+
+    </div>
+
+    <div class="section compact">
+        <h2>一、测评结果概览</h2>
+
+        <h3 class="compact-top">1. 整体得分概览</h3>
+        <img src="{{ chart_img }}" alt="维度得分图">
+
+        <div class="performance-indicator compact">
+            <div>
+                <h3 class="compact-top">2. 整体发展状况</h3>
+                <p class="compact"><strong>潜质综合评分：</strong> {{ user_info.total_score|round(2) }}分</p>
+            </div>
+            <div class="performance-tag compact
+                {% if user_info.total_score >= 8.5 %}high-performance
+                {% elif user_info.total_score >= 7.5 %}high_medium-performance
+                {% elif user_info.total_score >= 6.5 %}medium-performance
+                {% else %}low-performance{% endif %}">
+                {% if user_info.total_score >= 8.5 %}
+                高潜力
+                {% elif user_info.total_score >= 7.5 %}
+                中高潜力
+                {% elif user_info.total_score >= 6.5 %}
+                中等潜力
+                {% else %}
+                基础潜力
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="evaluation-box compact">
+            <h4 class="compact"><span class="icon">✓</span>综合评述：</h4>
+            <p>{{ performance_eval.summary }}</p>
+
+            <h4 class="compact"><span class="icon">✎</span>发展建议：</h4>
+            <p class="emphasis compact">{{ performance_eval.development_focus }}</p>
+        </div>
+    </div>
+
+    <div class="section compact">
+        <h2>二、维度分析详情</h2>
+        {% for dim_name, dim_data in dimensions.items() %}
+        <div class="dimension compact">
+            <div class="dimension-header compact">
+                <h3 class="compact">{{ dim_name }}：<span class="emphasis">{{ dim_data.score|round(2) }}分</span></h3>
+
+                {% if dimension_evaluations[dim_name] %}
+                <div class="performance-tag compact
+                    {% if dimension_evaluations[dim_name]['eval_level'] == 'high' %}high-performance
+                    {% elif dimension_evaluations[dim_name]['eval_level'] == 'medium' %}high_medium-performance
+                    {% elif dimension_evaluations[dim_name]['eval_level'] == 'low' %}medium-performance
+                    {% else %}low-performance{% endif %}">
+                    {% if dimension_evaluations[dim_name]['eval_level'] == 'high' %}高水平
+                    {% elif dimension_evaluations[dim_name]['eval_level'] == 'medium' %}中高水平
+                    {% elif dimension_evaluations[dim_name]['eval_level'] == 'low' %}中等水平
+                    {% else %}发展领域{% endif %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- 大维度评价 -->
+            {% if dimension_evaluations[dim_name] %}
+            <div class="evaluation-summary compact">
+                <h4 class="compact">综合评价：</h4>
+                <p class="compact">{{ dimension_evaluations[dim_name].dimension_eval }}</p>
+            </div>
+            {% endif %}
+
+            <!-- 子维度分析 - 紧凑布局 -->
+            <div class="sub-dimensions compact">
+                {% for sub_name, sub_data in dim_data.subs.items() %}
+                <div class="sub-dimension compact">
+                    <div class="sub-header compact">
+                        <h4 class="compact">{{ sub_name }}：<span class="emphasis">{{ sub_data.get('score', '0')|round(2) }}分</span></h4>
+
+                        {% if sub_data.get('evaluation') %}
+                        <div class="performance-tag compact
+                            {% if sub_data.evaluation.eval_level == 'high' %}high-performance
+                            {% elif sub_data.evaluation.eval_level == 'medium' %}high_medium-performance
+                            {% elif sub_data.evaluation.eval_level == 'low' %}medium-performance
+                            {% else %}low-performance{% endif %}">
+                            {% if sub_data.evaluation.eval_level == 'high' %}高水平
+                            {% elif sub_data.evaluation.eval_level == 'medium' %}中高水平
+                            {% elif sub_data.evaluation.eval_level == 'low' %}中等水平
+                            {% else %}发展领域{% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    {% if sub_data.get('evaluation') %}
+                    <div class="sub-evaluation compact">
+                        <div class="trait compact">
+                            <h5 class="compact"><span class="icon">★</span>潜质特点：</h5>
+                            <p class="compact">{{ sub_data.evaluation.潜质特点 }}</p>
+                        </div>
+                        <div class="work-tendency compact">
+                            <h5 class="compact"><span class="icon">⚙</span>工作中的倾向：</h5>
+                            <p class="compact">{{ sub_data.evaluation.工作中的倾向 }}</p>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="section compact">
+        <h2>三、总结与发展建议</h2>
+
+        <!-- 总体评估 -->
+        <p class="compact">
+            基于多维度的测评结果分析，{{ user_info.name }}的总体得分
+            {% if strengths.总分 %}
+                <span class="emphasis">高于</span> 团队平均水平({{ strengths.总分.average|round(2) }}分)，
+                领先 {{ strengths.总分.diff|round(2) }}分。
+            {% else %}
+                <span class="emphasis">低于</span> 团队平均水平({{ weaknesses.总分.average|round(2) }}分)，
+                差距为 {{ weaknesses.总分.diff|abs|round(2) }}分。
+            {% endif %}
+        </p>
+
+        <div class="evaluation-box compact">
+            <h4 class="compact"><span class="icon">✨</span>优势领域</h4>
+            {% if strengths|get_dim_strengths or strengths|get_sub_strengths %}
+                <ul>
+                    {% for item in strengths|get_dim_strengths %}
+                        <li><strong>{{ item.name }}</strong>: {{ item.score|round(2) }}分
+                            (高于平均 {{ (item.score - item.average)|round(2) }}分)
+                        </li>
+                    {% endfor %}
+
+                    {% for item in strengths|get_sub_strengths %}
+                        <li><em>{{ item.name }}</em>: {{ item.score|round(2) }}分
+                            (高于平均 {{ (item.score - item.average)|round(2) }}分)
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>未检测到显著优势领域</p>
+            {% endif %}
+
+            <h4 class="compact"><span class="icon">⚠️</span>发展领域</h4>
+            {% if weaknesses|get_dim_weaknesses or weaknesses|get_sub_weaknesses %}
+                <ul>
+                    {% for item in weaknesses|get_dim_weaknesses %}
+                        <li><strong>{{ item.name }}</strong>: {{ item.score|round(2) }}分
+                            (低于平均 {{ (item.average - item.score)|round(2) }}分)
+                        </li>
+                    {% endfor %}
+
+                    {% for item in weaknesses|get_sub_weaknesses %}
+                        <li><em>{{ item.name }}</em>: {{ item.score|round(2) }}分
+                            (低于平均 {{ (item.average - item.score)|round(2) }}分)
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>未检测到显著发展领域</p>
+            {% endif %}
+        </div>
+
+        <!-- 专项建议 -->
+        <h3 class="compact">专项发展建议：</h3>
+        {% set top_strength = strengths|get_top_strength %}
+        {% set main_weakness = weaknesses|get_main_weakness %}
+
+        <ul class="list-style-check compact">
+            {% if top_strength %}
+                <li class="compact">
+                    <strong>优势强化</strong>：保持并发挥您在{{ top_strength.name }}领域的领先优势
+                    ({{ top_strength.score|round(2) }}分，领先团队平均{{ (top_strength.score - top_strength.average)|round(2) }}分)
+                </li>
+            {% endif %}
+
+            {% if main_weakness %}
+                <li class="compact">
+                    <strong>重点提升</strong>：聚焦{{ main_weakness.name }}能力发展
+                    (当前{{ main_weakness.score|round(2) }}分，落后团队平均{{ (main_weakness.average - main_weakness.score)|round(2) }}分)
+                </li>
+            {% endif %}
+
+            <li class="compact">
+                <strong>综合发展</strong>：参加跨部门协作项目，将优势能力应用于发展领域
+            </li>
+
+            <li class="compact">
+                <strong>长期规划</strong>：制定6-12个月的发展计划，重点关注
+                {% if main_weakness %}
+                    {{ main_weakness.name }}
+                {% else %}
+                    管理能力综合提升
+                {% endif %}
+            </li>
+        </ul>
+
+        <!-- 行动计划 -->
+        <h3 class="compact">个性化行动计划：</h3>
+        <div class="evaluation-box compact">
+            <p class="compact">
+                基于您的能力特点，建议按以下时间点推进发展计划：
+            </p>
+            <ul class="compact">
+                <li class="compact">
+                    <strong>第1个月</strong>：完成能力评估与目标设定
+                    {% if main_weakness %}
+                        ，聚焦{{ main_weakness.name }}能力诊断
+                    {% endif %}
+                </li>
+                <li class="compact">
+                    <strong>第2-3个月</strong>：
+                    {% if top_strength %}
+                        在{{ top_strength.name }}领域担任内部教练
+                    {% else %}
+                        参与专业技能培训
+                    {% endif %}
+                    {% if main_weakness %}
+                        ，同时开展{{ main_weakness.name }}专项学习
+                    {% endif %}
+                </li>
+                <li class="compact">
+                    <strong>第4-6个月</strong>：
+                    {% if main_weakness %}
+                        主导{{ main_weakness.name }}相关的实践项目
+                    {% else %}
+                        参与跨部门协作项目
+                    {% endif %}
+                    ，积累实战经验
+                </li>
+                <li class="compact">
+                    <strong>第6个月末</strong>：完成中期评估，总结成长收获，规划下一阶段发展
+                </li>
+            </ul>
+        </div>
+    </div>
+
+
+    <footer>
+        <p>本报告由专业测评系统生成，内容仅作参考</p>
+        <p>© 2025 运营管理中心-人力资源部 | 保密文件</p>
+    </footer>
+</body>
+</html>

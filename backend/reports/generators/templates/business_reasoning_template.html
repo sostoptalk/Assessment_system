@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>商业推理能力测评报告</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+
+        body {
+            font-family: 'Microsoft YaHei', 'Segoe UI', Tahoma, sans-serif, 'SimSun';
+            font-size: 14px;
+            line-height: 1.5; /* 略微减小行高 */
+            color: #333;
+            padding: 0;
+            margin: 0;
+            background-color: #f9f9f9;
+            }
+
+        .page {
+            min-height: 29.7cm;
+            padding: 1.1cm; /* 减少页面内边距 */
+            box-sizing: border-box;
+            background-color: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            margin: 1cm auto;
+            max-width: 21cm;
+        }
+
+        /* 优化摘要区域 */
+        .summary {
+            background-color: #f8f9fa;
+            padding: 10px; /* 减少内边距 */
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+            margin-bottom: 20px; /* 减少底部边距 */
+            box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+        }
+
+        .summary ul {
+            margin-left: 20px; /* 减少列表缩进 */
+            margin-top: 10px;
+            margin-bottom: 15px;
+        }
+
+        .summary li {
+            margin-bottom: 8px; /* 减少列表项间距 */
+        }
+
+        /* 优化图表区域 */
+        .chart-container {
+            text-align: center;
+            margin-top: 20px; /* 减少顶部边距 */
+            background-color: #f9f9f9;
+            padding: 10px; /* 减少内边距 */
+            border-radius: 8px;
+            border: 1px solid #e3e8ed;
+        }
+
+        /* 优化维度卡片 */
+        .dimension-card {
+            background-color: white;
+            border-radius: 8px;
+            border-left: 5px solid #3498db;
+            padding: 15px; /* 减少内边距 */
+            margin-bottom: 20px; /* 减少底部间距 */
+            box-shadow: 0 3px 15px rgba(0,0,0,0.08);
+            transition: all 0.3s ease;
+            border-top: 3px solid #fff;
+        }
+
+        /* 结论部分优化 */
+        .conclusion {
+            margin-top: 10px; /* 减少顶部边距 */
+            padding: 15px; /* 减少内边距 */
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        /* 签名区域优化 */
+        .signature {
+            text-align: right;
+            margin-top: 30px; /* 减少顶部边距 */
+            font-style: italic;
+            color: #555;
+            border-top: 1px solid #ddd; /* 使用更细的分隔线 */
+            padding-top: 15px;
+        }
+
+        /* 页脚优化 */
+        .footer {
+            text-align: center;
+            color: #999;
+            font-size: 12px;
+            margin-top: 20px; /* 减少顶部边距 */
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+        }
+
+
+        .section-title {
+            font-size: 22px;
+            text-align: center;
+            margin-bottom: 8px;
+            color: #1a5276;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #3498db;
+            position: relative;
+        }
+
+        /* 新增紧凑布局类 */
+        .compact-section {
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
+
+        /* 维度摘要区域优化 */
+        .dimension-summary {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px; /* 减少顶部边距 */
+        }
+
+        .summary-block {
+            padding: 3px; /* 减少内边距 */
+            border-radius: 3px;
+            flex: 1;
+            margin: 0 5px;
+            border: 1px solid #e3e8ed;
+        }
+
+        /* 评分盒优化 */
+        .score-box {
+            background: linear-gradient(135deg, #3498db, #2ecc71);
+            padding: 12px; /* 减少内边距 */
+            border-radius: 8px;
+            min-width: 110px; /* 略微减小宽度 */
+            color: white;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .characteristics, .typical-performances {
+            background: #ffffff;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.04);
+            border: 1px solid #eef5fc;
+        }
+
+        /* 特性列表优化 */
+        .characteristics ul, .typical-performances ul {
+            padding-left: 15px; /* 减少左侧填充 */
+        }
+
+        .characteristics li, .typical-performances li {
+            margin-bottom: 8px; /* 减少列表项间距 */
+            padding-left: 20px; /* 减少左侧填充 */
+            position: relative;
+            line-height: 1.7;
+            color: #2c3e50;
+        }
+
+        /* 建议区域优化 */
+        .suggestions {
+            padding: 15px; /* 减少内边距 */
+            margin: 15px 0; /* 减少边距 */
+        }
+
+        .suggestions li {
+            margin-bottom: 10px; /* 减少列表项间距 */
+        }
+
+        /* 基础样式 */
+        body {
+            font-family: 'Microsoft YaHei', 'Segoe UI', Tahoma, sans-serif, 'SimSun';
+            font-size: 14px;
+            line-height: 1.6;
+            color: #333;
+            padding: 0;
+            margin: 0;
+            background-color: #f9f9f9;
+        }
+
+        .page {
+            min-height: 29.7cm;
+            padding: 1.5cm;
+            box-sizing: border-box;
+            background-color: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            margin: 1cm auto;
+            max-width: 21cm;
+        }
+        .improve-block h4 i {
+            background: #fde8e6;
+            color: #e74c3c;
+        }
+        .page-break {
+            page-break-before: always;
+        }
+        .summary-block h4 i {
+            margin-right: 10px;
+            width: 30px;
+            height: 30px;
+            background: #e8f4fc;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #3498db;
+        }
+        /* 封面页样式 */
+        .cover {
+            text-align: center;
+            padding-top: 4cm;
+        }
+
+        .logo {
+            max-width: 120px;
+            margin-bottom: 30px;
+        }
+
+        .cover h1 {
+            font-size: 28px;
+            margin-bottom: 1.5cm;
+            color: #1a5276;
+            position: relative;
+            padding-bottom: 15px;
+        }
+
+        .cover h1:after {
+            content: "";
+            position: absolute;
+            bottom: 0;
+            left: 25%;
+            right: 25%;
+            height: 2px;
+            background: linear-gradient(to right, #3498db, #2ecc71);
+        }
+
+        .cover h2 {
+            font-size: 24px;
+            margin-bottom: 1cm;
+            color: #333;
+        }
+
+        .subtitle {
+            font-size: 16px;
+            margin-top: 2cm;
+            color: #555;
+            border-top: 1px solid #ddd;
+            padding-top: 15px;
+            width: 70%;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* 阅读指南 */
+        .reading-guide {
+            margin-top: 50px;
+        }
+
+        .reading-guide h2 {
+            font-size: 20px;
+            text-align: center;
+            margin-bottom: 25px;
+            color: #1a5276;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #1a5276;
+        }
+
+        .reading-guide h3 {
+            font-size: 18px;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            color: #2874a6;
+            background: linear-gradient(to right, #f0f8ff, #ffffff);
+            padding: 12px 20px;
+            border-left: 4px solid #3498db;
+            border-radius: 0 4px 4px 0;
+            position: relative;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.03);
+        }
+        .reading-guide h3 i {
+            margin-right: 10px;
+            color: #2980b9;
+        }
+
+        .reading-guide p {
+            margin-bottom: 20px;
+            text-align: justify;
+            line-height: 1.8;
+            color: #34495e;
+            padding: 0 15px;
+        }
+
+        .reading-guide ul {
+            margin-left: 30px;
+            margin-bottom: 25px;
+            background: linear-gradient(to right, #f8fcff, #ffffff);
+            padding: 20px 25px;
+            border-radius: 8px;
+            border-left: 3px solid #3498db;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.03);
+        }
+
+        .reading-guide li {
+            margin-bottom: 12px;
+            padding-left: 25px;
+            position: relative;
+            color: #2c3e50;
+            line-height: 1.7;
+        }
+        .reading-guide li:before {
+            content: "\f138";
+            font-family: "Font Awesome 5 Free";
+            font-weight: 900;
+            position: absolute;
+            left: 0;
+            top: 2px;
+            color: #3498db;
+        }
+
+        /* 个人结果中心 */
+        .header {
+            margin-bottom: 5px;
+        }
+
+        .summary {
+            background-color: #f8f9fa;
+            padding: 5px;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+            margin-bottom: 10px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+        }
+
+        .summary p {
+            margin-bottom: 3px;
+        }
+
+        .summary h3 {
+            background-color: #e8f4fc;
+            padding: 5px 15px;
+            border-radius: 4px;
+            color: #2c3e50;
+        }
+
+        .highlight {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .advantage {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+
+        .disadvantage {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+
+        .excellent {
+            background-color: #d9edf7;
+            color: #31708f;
+            padding: 4px 10px;
+            border-radius: 15px;
+            display: inline-block;
+        }
+
+        .good {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 15px;
+            display: inline-block;
+        }
+
+        .medium {
+            background-color: #fcf8e3;
+            color: #8a6d3b;
+            padding: 4px 10px;
+            border-radius: 15px;
+            display: inline-block;
+        }
+
+        .low {
+            background-color: #f2dede;
+            color: #a94442;
+            padding: 4px 10px;
+            border-radius: 15px;
+            display: inline-block;
+        }
+
+        .chart-container {
+            text-align: center;
+            margin-top: 15px;
+            background: linear-gradient(to bottom, #f8f9fa, #f0f5f7);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e3e8ed;
+        }
+
+        .chart-container img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+        }
+
+        .chart-caption {
+            font-style: italic;
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+        }
+
+        .dimension-summary {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+
+        .summary-block {
+            background: #f5f9ff;
+            border-radius: 8px;
+            flex: 1;
+            border: 1px solid #e3e8ed;
+        }
+
+        .strength-block {
+            background: #f0fdf4;
+            border-color: #c3e6cb;
+        }
+
+        .improve-block {
+            background: #fff5f5;
+            border-color: #f8d7da;
+        }
+
+        .summary-block h4 {
+            margin-top: 0;
+            border-bottom: 1px dashed #ccc;
+            padding-bottom: 5px;
+            color: #3498db;
+        }
+
+        /* 维度分析 */
+        .dimension-card {
+            background: linear-gradient(to bottom, #ffffff, #fbfdff);
+            border-radius: 8px;
+            border-left: 5px solid #3498db;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.08);
+            transition: all 0.3s ease;
+            border-top: 3px solid #fff;
+        }
+
+        .dimension-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+            border-top: 3px solid #3498db;
+        }
+
+        .dimension-card h2 {
+            font-size: 22px;
+            color: #1a5276;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eef5fb;
+            display: flex;
+            align-items: center;
+            font-weight: 600;
+        }
+
+        .dimension-card h2:before {
+            content: "";
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: linear-gradient(135deg, #3498db, #2ecc71);
+            border-radius: 50%;
+            margin-right: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        .dimension-card .definition {
+            font-style: italic;
+            color: #555;
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-left: 3px solid #3498db;
+        }
+
+        .score-container {
+            display: flex;
+            margin-bottom: 20px;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .score-box {
+            background: linear-gradient(135deg, #3498db, #2ecc71);
+            padding: 15px;
+            border-radius: 8px;
+            min-width: 120px;
+            color: white;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .score-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .score-label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .score-info {
+            flex: 1;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .score-level {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+        }
+
+        .characteristics h3, .typical-performances h3 {
+            font-size: 16px;
+            color: #1a5276;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px dashed #ddd;
+            display: flex;
+            align-items: center;
+        }
+
+        .characteristics ul, .typical-performances ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+
+        .characteristics li, .typical-performances li {
+            margin-bottom: 10px;
+            padding-left: 25px;
+            position: relative;
+        }
+
+        .characteristics li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #27ae60;
+            font-weight: bold;
+        }
+
+        .typical-performances li:before {
+            content: "→";
+            position: absolute;
+            left: 0;
+            color: #3498db;
+            font-weight: bold;
+        }
+
+        /* 结论页 */
+        .conclusion {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .conclusion h2 {
+            font-size: 22px;
+            text-align: center;
+            color: #1a5276;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #3498db;
+            position: relative;
+        }
+
+        .conclusion h2:after {
+            content: "★";
+            position: absolute;
+            top: -23px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1a5276;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            line-height: 30px;
+            font-size: 15px;
+        }
+
+        .conclusion h3 {
+            font-size: 17px;
+            color: #2c3e50;
+            margin-top: 25px;
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+            border-bottom: 1px dashed #ddd;
+            display: flex;
+            align-items: center;
+        }
+
+        .conclusion h3:before {
+            content: "";
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            background-color: #3498db;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+
+        .conclusion p {
+            margin-bottom: 15px;
+            line-height: 1.8;
+            padding-left: 15px;
+        }
+
+        .suggestions {
+            background-color: #e8f4fc;
+            padding: 20px;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+            margin: 20px 0;
+        }
+
+        .suggestions li {
+            margin-bottom: 15px;
+            padding-left: 35px;
+            position: relative;
+            line-height: 1.6;
+        }
+
+        .suggestions li:before {
+            content: "◆";
+            position: absolute;
+            left: 10px;
+            color: #2980b9;
+            font-size: 18px;
+        }
+
+        .final-remark {
+            background: linear-gradient(135deg, #d6eaf8, #ebf5fb);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px dashed #3498db;
+            font-style: italic;
+            margin-top: 25px;
+        }
+
+        .signature {
+            text-align: right;
+            margin-top: 50px;
+            font-style: italic;
+            color: #555;
+            border-top: 2px solid #3498db;
+            padding-top: 20px;
+        }
+
+        .footer {
+            text-align: center;
+            color: #999;
+            font-size: 12px;
+            margin-top: 30px;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+        }
+
+        /* 特殊标记 */
+        .tag {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin: 0 3px;
+            font-size: 14px;
+        }
+
+        .tag-excellent {
+            background: linear-gradient(135deg, #2980b9, #3498db);
+            color: white;
+        }
+
+        .tag-good {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+            color: white;
+        }
+
+        .tag-medium {
+            background: linear-gradient(135deg, #f39c12, #f1c40f);
+            color: white;
+        }
+
+        .tag-low {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+        }
+
+        .tag-strength {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+            color: white;
+            border: 1px dashed #27ae60;
+        }
+        .tag-strength_a {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+            color: white;
+            border: 1px dashed #27ae60;
+            width: 90px;
+            text-align: center;
+        }
+
+        .tag-improvement {
+            background: linear-gradient(135deg, #e67e22, #f39c12);
+            color: white;
+            border: 1px dashed #e74c3c;
+        }
+        .tag-improvement_a {
+            background: linear-gradient(135deg, #e67e22, #f39c12);
+            color: white;
+            border: 1px dashed #e74c3c;
+            width: 90px;
+            text-align: center;
+        }
+
+        /* 分数指示器 */
+        .score-indicator {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+
+        .score-excellent { background-color: #e8f6f3; color: #1a8c2c; border: 1px solid #a3e4d7; }
+        .score-good { background-color: #e8f4fc; color: #2980b9; border: 1px solid #aed6f1; }
+        .score-medium { background-color: #fef9e7; color: #d35400; border: 1px solid #fad7a0; }
+        .score-low { background-color: #fdedec; color: #c0392b; border: 1px solid #f5b7b1; }
+    </style>
+</head>
+<body>
+    <!-- 封面页 -->
+    <div class="page">
+        <div class="cover">
+            <img class="logo" src="{{ logo_url }}" alt="商业测评中心">
+            <h1>商业推理能力测评报告</h1>
+            <h2 id="report-name">{{name}}</h2>
+            <div class="subtitle">
+                报告编号: {{ report_id }}<br>
+                测评日期: 2025年5月21日
+            </div>
+        </div>
+    </div>
+
+    <!-- 阅读指南 -->
+    <div class="page">
+        <div class="reading-guide">
+            <h2 class="section-title">阅读指南</h2>
+            <p>作为企业发展的舵手，管理人员的能力是企业全局效率的基础和根本保证。为此，本测验立足于考察管理人员日常工作中最常用、也是最重要的基本能力，从复杂信息理解、批判性评估、策略性推理和概念性推理四个基本方面来评估应试者的商业综合推理能力。</p>
+
+            <p>这里所指的"能力"不是天生的、一成不变的，也不像知识或技能一样可以在短期内掌握，而是经过长期的努力才可以有部分改变的，它水平的高低会直接影响管理人员日常工作中的问题解决效率和决策质量，在很大程度上预测了人们的发展潜力，是职业成功的良好预测指标。</p>
+
+            <h3><i class="fas fa-book-reader"></i> 报告阅读原则</h3>
+            <ul>
+                <li>首先，分数代表着应试者的基本能力水平，在筛选不符合要求的候选人上作用突出；</li>
+                <li>其次，本测验采用 1-10 分的标准分制，其中 6.5 分以下为低分，6.5 分-7.5 分为表现中等，7.5-8.5分表现为良好，8.5 分及以上为优秀，得分越高表明应试者基本能力水平越高；</li>
+                <li>第三，本测验分数是对能力结构和认知风格的剖析，而不是给人贴一个分数标签，主要应用于了解一个人的优劣势，以便在工作中可以扬长避短；</li>
+                <li>最后，本测验属于难度测验，分数解释需要结合参测者背景信息综合分析。例如由于有时间限制，对年龄较大应试者的分数进行解释时需要对年龄因素加以考虑。</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 个人结果中心 -->
+    <div class="page">
+        <div class="header">
+            <h2 class="section-title" id="result-name">{{ name }} - 商业推理能力分析</h2>
+            <div class="summary compact-section">
+                <p>{{ name }}在本测验上的综合推理能力得分为 <strong>{{ total_score }} 分</strong>，
+                    <span class="{{ overall_class }} highlight">{{ overall_performance }}</span>
+                </p>
+
+                <h3 class="compact-section">维度表现分析：</h3>
+                <ul>
+                    {% for dim in dimensions %}
+                    <li>
+                        在<strong>{{ dim.name }}</strong>方面得分为 <strong>{{ dim.score }} 分</strong>，
+                        <span class="tag tag-{% if dim.score >= dim.avg_score %}strength{% else %}improvement{% endif %}">
+                            {% if dim.score >= dim.avg_score %}表现优秀{% else %}需要加强{% endif %}
+                        </span>
+                        （平均分：{{ dim.avg_score }}分）
+                    </li>
+                    {% endfor %}
+                </ul>
+
+                <div class="dimension-summary compact-section">
+                    <div class="summary-block strength-block">
+                        <h4><i class="fas fa-star"></i>优势项目</h4>
+                        <p>
+                            {% for dim in dimensions if dim.score >= dim.avg_score %}
+                                <span class="tag tag-strength_a">{{ dim.name }}</span>
+                            {% else %}
+                                无显著优势项目
+                            {% endfor %}
+                        </p>
+                    </div>
+
+                    <div class="summary-block improve-block">
+                        <h4><i class="fas fa-lightbulb"></i>待提升项目</h4>
+                        <p>
+                            {% for dim in dimensions if dim.score < dim.avg_score %}
+                                <span class="tag tag-improvement_a">{{ dim.name }}</span>
+                            {% else %}
+                                所有项目均达到或超过平均水平
+                            {% endfor %}
+                        </p>
+                    </div>
+                </div>
+
+                <div class="chart-container compact-section">
+                <img src="data:image/png;base64,{{ chart_base64 }}" alt="商业推理能力分析图">
+                <div class="chart-caption">商业推理能力分析 - {{ name }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 维度分析 -->
+    <div class="page">
+        <!-- 动态生成维度卡片 -->
+        {% for dim in dimensions %}
+        <div class="dimension-card">
+            <h2>{{ dim.index }}. {{ dim.name }}</h2>
+            <p class="definition">{{ dim.definition }}</p>
+
+            <div class="score-container">
+                <div class="score-box">
+                    <div class="score-value">{{ dim.score }}</div>
+                    <div class="score-label">得分</div>
+                </div>
+
+                <div class="score-info">
+                    <div class="score-level tag-{{ dim.level_key }}">{{ dim.level_description }}</div>
+                    <p>分数解释：{{ name }}在这方面分数为 {{ dim.score }} 分，{{ dim.level_description }}。</p>
+                    <p>{% if dim.score >= dim.avg_score %}高于{% else %}低于{% endif %}平均分：{{ dim.avg_score }}分</p>
+                </div>
+            </div>
+
+            <div class="characteristics">
+                <h3><i class="fas fa-check-circle"></i> 典型特点</h3>
+                <ul>
+                    {% for char in dim.characteristics %}
+                    <li>{{ char }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <div class="typical-performances">
+                <h3>典型表现</h3>
+                <ul>
+                    {% for performance in dim.typical_performances %}
+                    <li>{{ performance }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <div class="suggestions">
+                <h3>发展建议</h3>
+                <p class="tag-improvement">{{ dim.suggestion }}</p>
+            </div>
+        </div>
+
+        <!-- 每页最多显示2个维度卡片 -->
+        {% if loop.index % 1 == 0 and not loop.last %}
+    </div>
+    <div class="page">
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    <!-- 结论和发展建议 -->
+    <div class="page">
+        <div class="conclusion">
+
+            <h2>
+                个人总结与发展建议
+            </h2>
+
+            <h3>整体评价</h3>
+            <p>{{ name }}在商业推理能力测评中综合得分
+                <span class="tag tag-{{ overall_class }}">{{ total_score }} 分</span>
+                ，整体表现
+                <span class="tag tag-{{ overall_class }}">{{ overall_performance }}</span>
+                。平均分为
+                <span class="tag tag-medium">{{ avg_total_score }}分</span>。
+            </p>
+
+            <h3>优势分析</h3>
+            <p>在<strong>{{ strengths_text }}</strong>方面表现突出，具有明显优势。</p>
+
+            <h3>待提升领域</h3>
+            <p>在<strong>{{ weaknesses_text }}</strong>方面有待提升。</p>
+
+            <div class="final-remark">
+                <p>{{ final_remark }}</p>
+            </div>
+
+            <div class="signature">
+                <p>商业推理能力测评中心</p>
+                <p>{{ current_date }}</p>
+            </div>
+
+            <div class="footer">
+                <p>本测评报告旨在提供发展建议，不构成最终评价。报告内容保密，请妥善保管。</p>
+                <p>© {{ current_year }} 运营管理中心-人力资源部 | 版本 1.2</p>
+            </div>
+        </div>
+    </div>
+
+<script>
+// JavaScript动态功能：更新报告名称
+document.addEventListener('DOMContentLoaded', function() {
+    // 获取URL参数
+    const urlParams = new URLSearchParams(window.location.search);
+    const name = urlParams.get('name');
+
+    // 如果有名称参数，更新报告中所有相关名称
+    if (name) {
+        document.getElementById('report-name').textContent = name;
+        document.getElementById('result-name').textContent = name + ' - 商业推理能力分析';
+        document.querySelectorAll('.summary p:first-child strong').forEach(el => {
+            el.innerHTML = el.innerHTML.replace('高满', name);
+        });
+    }
+});
+</script>
+</body>
+</html>
