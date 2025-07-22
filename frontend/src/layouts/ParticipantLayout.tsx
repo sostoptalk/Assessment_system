@@ -47,23 +47,42 @@ const ParticipantLayout = () => {
     }
 
     return (
-        <Layout style={{ minHeight: '100vh' }}>
+        <Layout style={{ height: '100vh', width: '100vw', overflow: 'auto' }}>
             <Sider
                 collapsible
                 collapsed={collapsed}
                 onCollapse={setCollapsed}
                 theme="light"
             >
+                {/* 添加公司logo */}
                 <div style={{
-                    height: 32,
-                    margin: 16,
-                    background: 'rgba(255, 255, 255, 0.2)',
-                    textAlign: 'center',
-                    lineHeight: '32px',
-                    fontWeight: 'bold'
+                    height: collapsed ? 48 : 100,
+                    margin: '16px auto',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    flexDirection: collapsed ? 'column' : 'column',
+                    transition: 'all 0.3s'
                 }}>
-                    测评平台
+                    <img
+                        src="/logo.png"
+                        alt="中量工程咨询有限公司"
+                        style={{
+                            width: collapsed ? 32 : 64,
+                            height: collapsed ? 32 : 64,
+                            objectFit: 'contain'
+                        }}
+                    />
+                    {!collapsed && (
+                        <span style={{
+                            fontSize: '14px',
+                            fontWeight: 'bold',
+                            marginTop: '8px',
+                            color: '#333'
+                        }}>中量工程咨询</span>
+                    )}
                 </div>
+
                 <Menu
                     mode="inline"
                     selectedKeys={[location.pathname]}
@@ -71,7 +90,7 @@ const ParticipantLayout = () => {
                     onClick={handleMenuClick}
                 />
             </Sider>
-            <Layout>
+            <Layout style={{ height: '100%', overflow: 'auto' }}>
                 <Header style={{
                     padding: '0 16px',
                     background: '#fff',
@@ -93,7 +112,8 @@ const ParticipantLayout = () => {
                     padding: '24px',
                     background: '#fff',
                     borderRadius: '8px',
-                    minHeight: 'calc(100vh - 120px)'
+                    height: '100%',
+                    overflow: 'auto'
                 }}>
                     <Routes>
                         <Route path="/profile" element={<Profile />} />

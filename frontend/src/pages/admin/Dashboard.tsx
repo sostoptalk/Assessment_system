@@ -1,4 +1,4 @@
-import { Card, Row, Col, Statistic, Table, Spin, message, Button, Tabs, Select } from 'antd'
+import { Card, Row, Col, Statistic, Table, Spin, message, Button, Tabs, Select, List, Tag, Modal } from 'antd'
 import { UserOutlined, QuestionCircleOutlined, FileTextOutlined, TrophyOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useEffect, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
@@ -21,6 +21,19 @@ interface RecentAssessment {
     paper_name: string
 }
 
+interface RedoRequest {
+    id: number;
+    assignment_id: number;
+    user_id: number;
+    paper_id: number;
+    request_time: string;
+    status: string;
+    admin_id?: number;
+    process_time?: string;
+    user_name?: string;
+    paper_name?: string;
+}
+
 const { TabPane } = Tabs
 const { Option } = Select
 
@@ -41,6 +54,8 @@ const Dashboard = () => {
     const [radarLoading, setRadarLoading] = useState(false)
     // 新增：雷达图分组数据
     const [radarGroupData, setRadarGroupData] = useState<any>(null)
+    const [redoRequests, setRedoRequests] = useState<RedoRequest[]>([]);
+    const [redoLoading, setRedoLoading] = useState(false);
 
     // 获取统计数据
     const fetchStats = async () => {
@@ -149,6 +164,60 @@ const Dashboard = () => {
             setRadarLoading(false)
         }
     }
+
+    const fetchRedoRequests = async () => {
+        console.log('fetchRedoRequests called');
+        setRedoLoading(true);
+        try {
+            const response = await fetch('http://localhost:8000/redo-requests', {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (response.ok) {
+                setRedoRequests(await response.json());
+            }
+        } finally {
+            setRedoLoading(false);
+        }
+    };
+
+    const handleReassign = async (requestId: number) => {
+        Modal.confirm({
+            title: '确认重新分配？',
+            content: '确定要为该申请重新分配试卷吗？',
+            onOk: async () => {
+                const response = await fetch('http://localhost:8000/redo-request/assign', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                    body: JSON.stringify({ request_id: requestId })
+                });
+                if (response.ok) {
+                    message.success('已重新分配');
+                    fetchRedoRequests();
+                } else {
+                    message.error('操作失败');
+                }
+            }
+        });
+    };
+
+    const handleReassignAll = async () => {
+        Modal.confirm({
+            title: '一键全部重新分配',
+            content: '确定要为所有重做申请重新分配试卷吗？',
+            onOk: async () => {
+                const response = await fetch('http://localhost:8000/redo-request/assign-all', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                });
+                if (response.ok) {
+                    message.success('全部已重新分配');
+                    fetchRedoRequests();
+                } else {
+                    message.error('操作失败');
+                }
+            }
+        });
+    };
 
     // 刷新所有数据
     const refreshData = async () => {
@@ -345,6 +414,10 @@ const Dashboard = () => {
         }
     ]
 
+    useEffect(() => {
+        fetchRedoRequests();
+    }, []);
+
     if (loading) {
         return (
             <div style={{ textAlign: 'center', padding: '50px' }}>
@@ -441,6 +514,36 @@ const Dashboard = () => {
                         </div>
                     </TabPane>
                 </Tabs>
+            </Card>
+
+            {/* 重做申请区域 */}
+            <Card title="重做申请" style={{ marginBottom: 24 }}>
+                <List
+                    loading={redoLoading}
+                    dataSource={redoRequests}
+                    locale={{ emptyText: '暂无重做申请' }}
+                    renderItem={item => (
+                        <List.Item
+                            actions={[
+                                <Button type="primary" size="small" onClick={() => handleReassign(item.id)}>重新分配</Button>
+                            ]}
+                        >
+                            <List.Item.Meta
+                                title={<span>{item.user_name || item.user_id} <Tag color="blue">{item.paper_name || item.paper_id}</Tag></span>}
+                                description={`申请时间：${item.request_time}`}
+                            />
+                        </List.Item>
+                    )}
+                />
+                <Button
+                    type="primary"
+                    danger
+                    style={{ marginTop: 16 }}
+                    onClick={handleReassignAll}
+                    disabled={redoRequests.length === 0}
+                >
+                    一键全部重新分配
+                </Button>
             </Card>
 
             {/* 最近测评 */}

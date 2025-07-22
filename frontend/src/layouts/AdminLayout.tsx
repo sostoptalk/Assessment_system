@@ -68,7 +68,7 @@ const AdminLayout = () => {
     }
 
     return (
-        <Layout style={{ minHeight: '100vh' }}>
+        <Layout style={{ height: '100vh', width: '100vw', overflow: 'auto' }}>
             <Sider
                 collapsible
                 collapsed={collapsed}
@@ -85,7 +85,7 @@ const AdminLayout = () => {
                     flexDirection: collapsed ? 'column' : 'column',
                     transition: 'all 0.3s'
                 }}>
-                    <img 
+                    <img
                         src="/logo.png"
                         alt="中量工程咨询有限公司"
                         style={{
@@ -103,7 +103,7 @@ const AdminLayout = () => {
                         }}>中量工程咨询</span>
                     )}
                 </div>
-                
+
                 <Menu
                     mode="inline"
                     selectedKeys={[location.pathname]}
@@ -111,7 +111,7 @@ const AdminLayout = () => {
                     onClick={handleMenuClick}
                 />
             </Sider>
-            <Layout>
+            <Layout style={{ height: '100%', overflow: 'auto' }}>
                 <Header style={{
                     padding: '0 16px',
                     background: '#fff',
@@ -134,7 +134,8 @@ const AdminLayout = () => {
                     padding: '24px',
                     background: '#fff',
                     borderRadius: '8px',
-                    minHeight: 'calc(100vh - 120px)'
+                    height: '100%',
+                    overflow: 'auto'
                 }}>
                     <Routes>
                         <Route path="/dashboard" element={<Dashboard />} />

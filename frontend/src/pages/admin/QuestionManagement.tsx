@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Card, Button, Table, Modal, Form, Input, Select, message, Space, Tag, Popconfirm, Upload, Spin, Checkbox } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, MinusCircleOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, MinusCircleOutlined, DownloadOutlined } from '@ant-design/icons'
 import axios from 'axios'
+import ReactQuill from 'react-quill'
+import 'react-quill/dist/quill.snow.css'
 
 const { Option } = Select
 const { TextArea } = Input
@@ -19,6 +21,18 @@ interface Question {
 
 const defaultOption = () => ({ value: '', score: 0 })
 
+// Quill 编辑器配置，增强表格粘贴体验
+const quillModules = {
+    toolbar: [
+        [{ 'header': [1, 2, 3, false] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+        ['blockquote', 'code-block'],
+        ['link', 'image'],
+        ['clean'],
+    ]
+}
+
 const QuestionManagement = () => {
     const [questions, setQuestions] = useState<Question[]>([])
     const [modalVisible, setModalVisible] = useState(false)
@@ -31,6 +45,10 @@ const QuestionManagement = () => {
     const [importing, setImporting] = useState(false)
     const [batchSubmitting, setBatchSubmitting] = useState(false)
     const [pagination, setPagination] = useState({ current: 1, pageSize: 10 })
+    const [caseModalVisible, setCaseModalVisible] = useState(false)
+    const [caseForm] = Form.useForm()
+    const [caseQuestions, setCaseQuestions] = useState<any[]>([])
+    const [caseBackground, setCaseBackground] = useState('')
 
     // 获取token
     const token = localStorage.getItem('token') || ''
@@ -75,7 +93,8 @@ const QuestionManagement = () => {
                 const typeMap = {
                     single: { color: 'blue', text: '单选题' },
                     multiple: { color: 'green', text: '多选题' },
-                    indefinite: { color: 'orange', text: '不定项' }
+                    indefinite: { color: 'orange', text: '不定项' },
+                    case: { color: 'purple', text: '案例背景题' }
                 }
                 const { color, text } = typeMap[type as keyof typeof typeMap]
                 return <Tag color={color}>{text}</Tag>
@@ -132,6 +151,14 @@ const QuestionManagement = () => {
         setModalVisible(true)
     }
 
+    // 新增：添加案例背景题
+    const handleAddCase = () => {
+        setCaseQuestions([{ content: '', type: 'single', options: [defaultOption(), defaultOption(), defaultOption(), defaultOption()], scores: [0, 0, 0, 0], shuffle_options: false }])
+        setCaseBackground('')
+        setCaseModalVisible(true)
+        caseForm.resetFields()
+    }
+
     const handleEdit = (question: Question) => {
         setEditingQuestion(question)
         form.setFieldsValue({
@@ -184,6 +211,44 @@ const QuestionManagement = () => {
         }
     }
 
+    // 新增：案例背景题提交
+    const handleCaseModalOk = async () => {
+        try {
+            const values = await caseForm.validateFields()
+            if (!caseBackground || caseBackground.trim() === '') {
+                message.error('请输入案例背景内容')
+                return
+            }
+            // 先保存案例背景题（主表）
+            const res = await axios.post('/api/questions/', {
+                content: caseBackground,
+                type: 'case',
+                options: [],
+                scores: [],
+                shuffle_options: false
+            }, { headers: { Authorization: `Bearer ${token}` } })
+            const caseId = res.data.id
+            // 组装payload
+            const questions = values.questions.map((q: any) => ({
+                ...q,
+                options: q.options.map((item: any) => item.value),
+                scores: q.options.map((item: any) => Number(item.score)),
+                parent_case_id: caseId
+            }))
+            // 再保存子题
+            for (const q of questions) {
+                await axios.post('/api/questions/', q, {
+                    headers: { Authorization: `Bearer ${token}` }
+                })
+            }
+            message.success('案例背景题添加成功')
+            setCaseModalVisible(false)
+            fetchQuestions()
+        } catch (e) {
+            message.error('添加失败')
+        }
+    }
+
     // 删除题目
     const handleDelete = async (id: number) => {
         try {
@@ -192,8 +257,12 @@ const QuestionManagement = () => {
             })
             message.success('删除成功')
             fetchQuestions()
-        } catch (e) {
-            message.error('删除失败')
+        } catch (e: any) {
+            if (e && e.response && e.response.data && e.response.data.detail) {
+                message.error(e.response.data.detail)
+            } else {
+                message.error('删除失败')
+            }
         }
     }
 
@@ -274,6 +343,38 @@ const QuestionManagement = () => {
         })
     }
 
+    // Excel导入相关
+    const handleExcelImport = async (file: any) => {
+        setImporting(true);
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const res = await axios.post('/api/questions/import_excel', formData, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const excelQuestions = res.data.questions.map((q: any) => ({
+                content: q.content,
+                type: q.type,
+                options: q.options.map((v: string, i: number) => ({ value: v, score: q.scores[i] ?? 0 })),
+                shuffle_options: q.shuffle_options || false
+            }));
+            batchForm.setFieldsValue({ questions: excelQuestions });
+            setBatchModalVisible(true);
+        } catch (e) {
+            message.error('Excel导入失败');
+        } finally {
+            setImporting(false);
+        }
+        return false;
+    };
+
+    const handleDownloadExcelTemplate = () => {
+        window.open('/excel模板.xlsx');
+    };
+    const handleDownloadWordTemplate = () => {
+        window.open('/questionnaire_template.docx');
+    };
+
     return (
         <div style={{ position: 'relative', minHeight: 600 }}>
             {(importing || batchSubmitting) && (
@@ -304,6 +405,19 @@ const QuestionManagement = () => {
                             批量删除
                         </Button>
                         <Upload
+                            accept=".xlsx,.xls"
+                            showUploadList={false}
+                            beforeUpload={handleExcelImport}
+                        >
+                            <Button icon={<UploadOutlined />}>导入Excel</Button>
+                        </Upload>
+                        <Button icon={<DownloadOutlined />} onClick={handleDownloadExcelTemplate}>
+                            下载Excel模板
+                        </Button>
+                        <Button icon={<DownloadOutlined />} onClick={handleDownloadWordTemplate}>
+                            下载Word模板
+                        </Button>
+                        <Upload
                             accept=".doc,.docx"
                             beforeUpload={handleWordImport}
                             showUploadList={false}
@@ -312,6 +426,9 @@ const QuestionManagement = () => {
                         </Upload>
                         <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
                             添加题目
+                        </Button>
+                        <Button type="dashed" onClick={handleAddCase} style={{ marginLeft: 8 }}>
+                            添加案例背景题
                         </Button>
                     </Space>
                 }
@@ -472,6 +589,91 @@ const QuestionManagement = () => {
                                             </Form.List>
                                         </Card>
                                     ))}
+                                </>
+                            )}
+                        </Form.List>
+                    </Form>
+                </Modal>
+
+                {/* 案例背景题弹窗 */}
+                <Modal
+                    title="添加案例背景题"
+                    open={caseModalVisible}
+                    onOk={handleCaseModalOk}
+                    onCancel={() => setCaseModalVisible(false)}
+                    width={900}
+                    okText="提交全部"
+                >
+                    <div style={{ marginBottom: 16 }}>
+                        <div style={{ fontWeight: 600, marginBottom: 8 }}>案例背景（<span style={{ color: '#faad14' }}>若有表格，请插入（复制）图片</span>）：</div>
+                        <ReactQuill value={caseBackground} onChange={setCaseBackground} theme="snow" modules={quillModules} style={{ minHeight: 120 }} />
+                    </div>
+                    <Form form={caseForm} layout="vertical">
+                        <Form.List name="questions" initialValue={caseQuestions}>
+                            {(fields, { add, remove }) => (
+                                <>
+                                    {fields.map((field, qidx) => (
+                                        <Card key={field.key} style={{ marginBottom: 16 }} title={`子题${qidx + 1}`}
+                                            extra={fields.length > 1 ? <MinusCircleOutlined onClick={() => remove(field.name)} /> : null}>
+                                            <Form.Item
+                                                {...field}
+                                                name={[field.name, 'content']}
+                                                label="题目内容"
+                                                rules={[{ required: true, message: '请输入题目内容' }]}
+                                            >
+                                                <TextArea rows={2} />
+                                            </Form.Item>
+                                            <Form.Item
+                                                {...field}
+                                                name={[field.name, 'type']}
+                                                label="题型"
+                                                rules={[{ required: true, message: '请选择题型' }]}
+                                            >
+                                                <Select style={{ width: 200 }}>
+                                                    <Option value="single">单选题</Option>
+                                                    <Option value="multiple">多选题</Option>
+                                                    <Option value="indefinite">不定项选择题</Option>
+                                                </Select>
+                                            </Form.Item>
+                                            <Form.Item
+                                                {...field}
+                                                name={[field.name, 'shuffle_options']}
+                                                label="选项乱序"
+                                                valuePropName="checked"
+                                            >
+                                                <Checkbox>启用选项乱序</Checkbox>
+                                            </Form.Item>
+                                            <Form.List name={[field.name, 'options']} initialValue={[defaultOption(), defaultOption(), defaultOption(), defaultOption()]}>
+                                                {(optFields, { add: addOpt, remove: removeOpt }) => (
+                                                    <>
+                                                        {optFields.map((opt, idx) => (
+                                                            <Space key={opt.key} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
+                                                                <Form.Item
+                                                                    {...opt}
+                                                                    name={[opt.name, 'value']}
+                                                                    rules={[{ required: true, message: '请输入选项内容' }]}
+                                                                >
+                                                                    <Input placeholder={`选项${String.fromCharCode(65 + idx)}`} style={{ width: 200 }} />
+                                                                </Form.Item>
+                                                                <Form.Item
+                                                                    {...opt}
+                                                                    name={[opt.name, 'score']}
+                                                                    rules={[{ required: true, message: '请输入分数' }]}
+                                                                >
+                                                                    <Input type="number" placeholder="分数" style={{ width: 80 }} />
+                                                                </Form.Item>
+                                                                {optFields.length > 2 && (
+                                                                    <MinusCircleOutlined onClick={() => removeOpt(opt.name)} />
+                                                                )}
+                                                            </Space>
+                                                        ))}
+                                                        <Button type="dashed" onClick={() => addOpt(defaultOption())} block icon={<PlusOutlined />}>添加选项</Button>
+                                                    </>
+                                                )}
+                                            </Form.List>
+                                        </Card>
+                                    ))}
+                                    <Button type="dashed" onClick={() => add({ content: '', type: 'single', options: [defaultOption(), defaultOption(), defaultOption(), defaultOption()], scores: [0, 0, 0, 0], shuffle_options: false })} block icon={<PlusOutlined />}>添加更多子题</Button>
                                 </>
                             )}
                         </Form.List>

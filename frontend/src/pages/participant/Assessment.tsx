@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Card, Button, Radio, Checkbox, Progress, message, Modal, List, Tag, Typography, Alert } from 'antd'
 import { ArrowLeftOutlined, ArrowRightOutlined, ClockCircleOutlined, FullscreenOutlined, FullscreenExitOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
+import React from 'react';
 
 const { Title, Text } = Typography
 
@@ -23,6 +24,34 @@ interface Question {
     type: string
     options: Array<{ label: string; text: string; score: number }>
     order_num: number
+    parent_case_id?: number // 新增：用于关联案例背景题
+}
+
+// 新增：将题目分组，支持parent_case_id
+function groupQuestionsByParent(questions: Question[]) {
+    const caseMap = new Map();
+    const groups = [];
+    // 先找所有case题
+    questions.forEach(q => {
+        if (q.type === 'case') {
+            caseMap.set(q.id, { background: q, subQuestions: [] });
+        }
+    });
+    // 再分配子题和普通题
+    questions.forEach(q => {
+        if (q.type !== 'case' && q.parent_case_id) {
+            if (caseMap.has(q.parent_case_id)) {
+                caseMap.get(q.parent_case_id).subQuestions.push(q);
+            }
+        } else if (q.type !== 'case') {
+            groups.push({ type: 'normal', question: q });
+        }
+    });
+    // 合并所有案例组
+    for (const group of caseMap.values()) {
+        groups.push({ type: 'case-group', ...group });
+    }
+    return groups;
 }
 
 const Assessment = () => {
@@ -38,6 +67,8 @@ const Assessment = () => {
     const [timeLeft, setTimeLeft] = useState(0)
     const [testStarted, setTestStarted] = useState(false)
     const [submitting, setSubmitting] = useState(false)
+    const [fullscreenExitCount, setFullscreenExitCount] = useState(0) // 新增：退出全屏计数
+    const MAX_FULLSCREEN_EXIT = 3 // 最大允许退出次数
 
     const navigate = useNavigate()
     const timerRef = useRef<number | null>(null)
@@ -79,11 +110,11 @@ const Assessment = () => {
                 return
             }
 
-            // 解析JWT token获取用户ID（这里需要根据实际的token结构调整）
+            // 解析JWT token获取用户ID（只用user_id字段，必须为数字）
             let userId = null
             try {
                 const payload = JSON.parse(atob(token.split('.')[1]))
-                userId = payload.sub || payload.user_id
+                userId = payload.user_id // 只用user_id字段
             } catch (e) {
                 console.warn('无法从token中获取用户ID')
             }
@@ -143,6 +174,10 @@ const Assessment = () => {
         if (fullscreenRef.current) {
             if (fullscreenRef.current.requestFullscreen) {
                 fullscreenRef.current.requestFullscreen()
+            } else if ((fullscreenRef.current as any).webkitRequestFullscreen) {
+                (fullscreenRef.current as any).webkitRequestFullscreen()
+            } else if ((fullscreenRef.current as any).msRequestFullscreen) {
+                (fullscreenRef.current as any).msRequestFullscreen()
             }
         }
         setIsFullscreen(true)
@@ -152,6 +187,10 @@ const Assessment = () => {
     const exitFullscreen = () => {
         if (document.exitFullscreen) {
             document.exitFullscreen()
+        } else if ((document as any).webkitExitFullscreen) {
+            (document as any).webkitExitFullscreen()
+        } else if ((document as any).msExitFullscreen) {
+            (document as any).msExitFullscreen()
         }
         setIsFullscreen(false)
     }
@@ -159,19 +198,40 @@ const Assessment = () => {
     // 处理全屏变化
     useEffect(() => {
         const handleFullscreenChange = () => {
-            if (!document.fullscreenElement) {
-                setIsFullscreen(false)
-                if (testStarted) {
-                    message.warning(`您已退出全屏，再退出将终止测试`)
+            if (testStarted) {
+                if (!document.fullscreenElement) {
+                    setIsFullscreen(false)
+                    setFullscreenExitCount(prev => {
+                        const newCount = prev + 1
+                        if (newCount >= MAX_FULLSCREEN_EXIT) {
+                            Modal.error({
+                                title: '测试终止',
+                                content: '您已多次退出全屏，测试已被终止。',
+                                okText: '返回首页',
+                                onOk: () => {
+                                    setTestStarted(false)
+                                    setTimeLeft(0)
+                                    setFullscreenExitCount(0)
+                                    navigate('/')
+                                }
+                            })
+                        } else {
+                            message.warning(`请保持全屏作答！再退出${MAX_FULLSCREEN_EXIT - newCount}次将终止测试。`)
+                            // 尝试重新进入全屏
+                            setTimeout(() => {
+                                enterFullscreen()
+                            }, 500)
+                        }
+                        return newCount
+                    })
+                } else {
+                    setIsFullscreen(true)
                 }
-            } else {
-                setIsFullscreen(true)
             }
         }
-
         document.addEventListener('fullscreenchange', handleFullscreenChange)
         return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
-    }, [testStarted])
+    }, [testStarted, navigate])
 
     // 计时器
     useEffect(() => {
@@ -296,11 +356,58 @@ const Assessment = () => {
         setShowRules(false)
     }
 
+    // 开始测试时重置退出全屏计数
     const handleStartTest = () => {
         if (selectedAssignment) {
+            setFullscreenExitCount(0)
             startAssessment(selectedAssignment.id)
         }
     }
+
+    // 申请重做
+    const handleRedoRequest = async () => {
+        if (!selectedAssignment) return;
+        try {
+            const response = await fetch(`http://localhost:8000/redo-request`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ assignment_id: selectedAssignment.id })
+            });
+            if (response.ok) {
+                message.success('重做申请已提交，请等待管理员处理');
+            } else {
+                const data = await response.json();
+                message.error(data.detail || '重做申请提交失败');
+            }
+        } catch (e) {
+            message.error('重做申请提交失败');
+        }
+    };
+
+    // 申请重做（列表页专用）
+    const handleRedoRequestFromList = async (assignment: Assignment) => {
+        try {
+            const response = await fetch(`http://localhost:8000/redo-request`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ assignment_id: assignment.id })
+            });
+            if (response.ok) {
+                message.success('重做申请已提交，请等待管理员处理');
+            } else {
+                const data = await response.json();
+                message.error(data.detail || '重做申请提交失败');
+            }
+        } catch (e) {
+            message.error('重做申请提交失败');
+        }
+    };
 
     const renderQuestion = () => {
         if (!questions.length || currentQuestion >= questions.length) return null
@@ -360,10 +467,28 @@ const Assessment = () => {
                                         </Button>
                                     ),
                                     assignment.status === 'started' && (
-                                        <Tag color="orange">进行中</Tag>
+                                        <>
+                                            <Tag color="orange">进行中</Tag>
+                                            <Button
+                                                danger
+                                                size="small"
+                                                onClick={() => handleRedoRequestFromList(assignment)}
+                                            >
+                                                申请重做
+                                            </Button>
+                                        </>
                                     ),
                                     assignment.status === 'completed' && (
-                                        <Tag color="green">已完成</Tag>
+                                        <>
+                                            <Tag color="green">已完成</Tag>
+                                            <Button
+                                                danger
+                                                size="small"
+                                                onClick={() => handleRedoRequestFromList(assignment)}
+                                            >
+                                                申请重做
+                                            </Button>
+                                        </>
                                     )
                                 ]}
                             >
@@ -433,9 +558,130 @@ const Assessment = () => {
 
     // 测试界面
     if (testStarted && selectedAssignment) {
-        const currentQ = questions[currentQuestion]
-        const progress = ((currentQuestion + 1) / questions.length) * 100
-        const answeredQuestions = Object.keys(answers).length
+        // 新增：分组
+        const questionGroups = groupQuestionsByParent(questions);
+        // 调试输出
+        console.log('questions', questions);
+        console.log('questionGroups', questionGroups);
+        // 统计总题数（不含case背景）
+        const totalQuestions = questions.filter(q => q.type !== 'case').length;
+        // 统计已答题数
+        const answeredQuestions = Object.keys(answers).length;
+        // 渲染题目导航（只显示可答题）
+        let flatIndex = 0;
+        const navButtons = [];
+        for (let gi = 0; gi < questionGroups.length; gi++) {
+            const g = questionGroups[gi];
+            if (g.type === 'normal' && g.question) {
+                const isAnswered = answers[g.question.id] && answers[g.question.id].length > 0;
+                navButtons.push(
+                    <Button
+                        key={g.question.id}
+                        size="small"
+                        type={flatIndex === currentQuestion ? 'primary' : 'default'}
+                        style={{
+                            backgroundColor: isAnswered ? '#52c41a' : '#f0f0f0',
+                            color: isAnswered ? 'white' : 'black',
+                            border: flatIndex === currentQuestion ? '2px solid #1890ff' : '1px solid #d9d9d9',
+                            margin: 2
+                        }}
+                        onClick={() => setCurrentQuestion(flatIndex)}
+                    >
+                        {flatIndex + 1}
+                    </Button>
+                );
+                flatIndex++;
+            } else if (g.type === 'case-group' && g.subQuestions && g.background) {
+                for (let si = 0; si < g.subQuestions.length; si++) {
+                    const sq = g.subQuestions[si];
+                    const isAnswered = answers[sq.id] && answers[sq.id].length > 0;
+                    navButtons.push(
+                        <Button
+                            key={sq.id}
+                            size="small"
+                            type={flatIndex === currentQuestion ? 'primary' : 'default'}
+                            style={{
+                                backgroundColor: isAnswered ? '#52c41a' : '#f0f0f0',
+                                color: isAnswered ? 'white' : 'black',
+                                border: flatIndex === currentQuestion ? '2px solid #1890ff' : '1px solid #d9d9d9',
+                                margin: 2
+                            }}
+                            onClick={() => setCurrentQuestion(flatIndex)}
+                        >
+                            {flatIndex + 1}
+                        </Button>
+                    );
+                    flatIndex++;
+                }
+            }
+        }
+        // 渲染所有题目内容
+        flatIndex = 0;
+        const contentBlocks = [];
+        for (let gi = 0; gi < questionGroups.length; gi++) {
+            const g = questionGroups[gi];
+            if (g.type === 'normal' && g.question) {
+                contentBlocks.push(
+                    <div key={g.question.id} style={{ marginBottom: 32 }}>
+                        <Title level={4}>题目 {flatIndex + 1}</Title>
+                        <div style={{ fontSize: '16px', lineHeight: 1.6, marginBottom: 24 }}>
+                            <div dangerouslySetInnerHTML={{ __html: g.question.content }} />
+                        </div>
+                        <div style={{ marginBottom: 24 }}>
+                            {renderQuestionBlock(g.question, answers[g.question.id] || [], v => setAnswers(prev => ({ ...prev, [g.question.id]: v })))}
+                        </div>
+                    </div>
+                );
+                flatIndex++;
+            } else if (g.type === 'case-group' && g.subQuestions && g.background) {
+                contentBlocks.push(
+                    <div key={g.background.id} style={{ marginBottom: 32, border: '1px solid #e6f7ff', borderRadius: 8, background: '#f6fbff', padding: 24 }}>
+                        <div style={{ marginBottom: 16 }}>
+                            <Title level={4} style={{ color: '#1890ff' }}>案例背景</Title>
+                            <div style={{ fontSize: '16px', lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: g.background.content }} />
+                        </div>
+                        {g.subQuestions?.map((sq: Question, si: number) => {
+                            const idx = flatIndex + si;
+                            return (
+                                <div key={sq.id} style={{ marginBottom: 32, borderBottom: si < g.subQuestions.length - 1 ? '1px dashed #d9d9d9' : 'none', paddingBottom: 16 }}>
+                                    <Title level={5} style={{ marginTop: 0 }}>子题 {idx + 1}</Title>
+                                    <div style={{ fontSize: '15px', marginBottom: 16 }} dangerouslySetInnerHTML={{ __html: sq.content }} />
+                                    {renderQuestionBlock(sq, answers[sq.id] || [], v => setAnswers(prev => ({ ...prev, [sq.id]: v })))}
+                                </div>
+                            );
+                        })}
+                    </div>
+                );
+                flatIndex += g.subQuestions?.length || 0;
+            }
+        }
+
+        // 渲染题目选项（单题/多题）
+        function renderQuestionBlock(q: Question | undefined, value: string[], onChange: (value: string[]) => void) {
+            if (!q) return null;
+            if (q.type === 'single') {
+                return (
+                    <Radio.Group value={value[0]} onChange={e => onChange([e.target.value])}>
+                        {q.options?.map(option => (
+                            <Radio key={option.label} value={option.label} style={{ display: 'block', marginBottom: 16 }}>
+                                {option.label}. {option.text}
+                            </Radio>
+                        ))}
+                    </Radio.Group>
+                );
+            } else if (q.type === 'multiple' || q.type === 'indefinite') {
+                return (
+                    <Checkbox.Group value={value} onChange={onChange}>
+                        {q.options?.map(option => (
+                            <Checkbox key={option.label} value={option.label} style={{ display: 'block', marginBottom: 16 }}>
+                                {option.label}. {option.text}
+                            </Checkbox>
+                        ))}
+                    </Checkbox.Group>
+                );
+            }
+            return null;
+        }
 
         return (
             <div ref={fullscreenRef} style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -450,9 +696,8 @@ const Assessment = () => {
                 }}>
                     <div>
                         <Title level={4} style={{ margin: 0 }}>{selectedAssignment.paper_name}</Title>
-                        <Text type="secondary">第 {currentQuestion + 1} 题 / 共 {questions.length} 题</Text>
+                        <Text type="secondary">第 {currentQuestion + 1} 题 / 共 {totalQuestions} 题</Text>
                     </div>
-
                     <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                         <div style={{ textAlign: 'center' }}>
                             <div style={{ fontSize: '18px', fontWeight: 'bold', color: timeLeft < 300 ? '#ff4d4f' : '#1890ff' }}>
@@ -460,7 +705,6 @@ const Assessment = () => {
                             </div>
                             <div style={{ fontSize: '12px', color: '#666' }}>剩余时间</div>
                         </div>
-
                         <Button
                             icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
                             onClick={isFullscreen ? exitFullscreen : enterFullscreen}
@@ -469,7 +713,6 @@ const Assessment = () => {
                         </Button>
                     </div>
                 </div>
-
                 <div style={{ flex: 1, display: 'flex' }}>
                     {/* 左侧题目列表 */}
                     <div style={{
@@ -480,81 +723,45 @@ const Assessment = () => {
                     }}>
                         <Title level={5}>题目导航</Title>
                         <div style={{ marginBottom: 8 }}>
-                            <Text type="secondary">已答题: {answeredQuestions}/{questions.length}</Text>
+                            <Text type="secondary">已答题: {answeredQuestions}/{totalQuestions}</Text>
                         </div>
-
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
-                            {questions.map((question, index) => {
-                                const isAnswered = answers[question.id] && answers[question.id].length > 0
-                                const isCurrent = index === currentQuestion
-
-                                return (
-                                    <Button
-                                        key={question.id}
-                                        size="small"
-                                        type={isCurrent ? 'primary' : 'default'}
-                                        style={{
-                                            backgroundColor: isAnswered ? '#52c41a' : '#f0f0f0',
-                                            color: isAnswered ? 'white' : 'black',
-                                            border: isCurrent ? '2px solid #1890ff' : '1px solid #d9d9d9'
-                                        }}
-                                        onClick={() => handleQuestionClick(index)}
-                                    >
-                                        {index + 1}
-                                    </Button>
-                                )
-                            })}
+                            {navButtons}
                         </div>
                     </div>
-
                     {/* 右侧题目内容 */}
                     <div style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
                         <div style={{ marginBottom: 24 }}>
-                            <Progress percent={progress} />
+                            <Progress percent={((currentQuestion + 1) / totalQuestions) * 100} />
                         </div>
-
-                        {currentQ && (
-                            <div>
-                                <div style={{ marginBottom: 24 }}>
-                                    <Title level={4}>题目 {currentQuestion + 1}</Title>
-                                    <div style={{ fontSize: '16px', lineHeight: 1.6 }}>
-                                        {currentQ.content}
-                                    </div>
-                                </div>
-
-                                <div style={{ marginBottom: 24 }}>
-                                    {renderQuestion()}
-                                </div>
-
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <Button
-                                        icon={<ArrowLeftOutlined />}
-                                        disabled={currentQuestion === 0}
-                                        onClick={handlePrev}
-                                    >
-                                        上一题
-                                    </Button>
-
-                                    {currentQuestion === questions.length - 1 ? (
-                                        <Button
-                                            type="primary"
-                                            loading={submitting}
-                                            onClick={handleSubmit}
-                                        >
-                                            提交测评
-                                        </Button>
-                                    ) : (
-                                        <Button
-                                            type="primary"
-                                            icon={<ArrowRightOutlined />}
-                                            onClick={handleNext}
-                                        >
-                                            下一题
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                        )}
+                        {contentBlocks}
+                        {/* 底部操作按钮 */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 32 }}>
+                            <Button
+                                icon={<ArrowLeftOutlined />}
+                                disabled={currentQuestion === 0}
+                                onClick={handlePrev}
+                            >
+                                上一题
+                            </Button>
+                            {currentQuestion === totalQuestions - 1 ? (
+                                <Button
+                                    type="primary"
+                                    loading={submitting}
+                                    onClick={handleSubmit}
+                                >
+                                    提交测评
+                                </Button>
+                            ) : (
+                                <Button
+                                    type="primary"
+                                    icon={<ArrowRightOutlined />}
+                                    onClick={handleNext}
+                                >
+                                    下一题
+                                </Button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -563,6 +770,7 @@ const Assessment = () => {
 
     // 开始测试按钮界面
     if (agreedToRules && selectedAssignment && !testStarted) {
+        const showRedo = selectedAssignment.status === 'completed' || selectedAssignment.status === 'started';
         return (
             <Card title="准备开始测试">
                 <div style={{ textAlign: 'center', padding: '40px' }}>
@@ -580,6 +788,17 @@ const Assessment = () => {
                     >
                         开始测试
                     </Button>
+                    {showRedo && (
+                        <Button
+                            type="default"
+                            danger
+                            size="large"
+                            style={{ marginLeft: 16 }}
+                            onClick={handleRedoRequest}
+                        >
+                            申请重做
+                        </Button>
+                    )}
                 </div>
             </Card>
         )

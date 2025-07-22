@@ -5,6 +5,7 @@ FastAPI 后端主程序
 - 包含数据库连接、用户模型、基础注册/登录接口
 - 中文注释
 """
+from sqlalchemy import text
 from typing import Optional, List
 from fastapi import FastAPI, Depends, HTTPException, status, APIRouter, File, UploadFile, Body, Query
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -24,6 +25,8 @@ import io
 import json
 from collections import defaultdict
 from fastapi.routing import APIRoute
+import pandas as pd
+import re
 # 导入Report模型，但需要确保在Base定义之后导入
 
 print("=== 3当前 main.py 被加载 ===")
@@ -60,6 +63,9 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    gender = Column(String(10))  # 性别
+    age = Column(Integer)       # 年龄
+    position = Column(String(100))  # 岗位
     
     # 关联关系
     reports = relationship("Report", back_populates="user")
@@ -74,6 +80,7 @@ class Question(Base):
     scores = Column(SQLAlchemyJSON, nullable=False)
     shuffle_options = Column(Boolean, default=False)  # 是否启用选项乱序
     dimension_id = Column(Integer, ForeignKey("dimensions.id"), nullable=True)  # 所属维度
+    parent_case_id = Column(Integer, nullable=True)  # 新增
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -146,6 +153,7 @@ class QuestionCreate(BaseModel):
     options: List[str]
     scores: List[int]
     shuffle_options: bool = False
+    parent_case_id: Optional[int] = None  # 新增
 
 class QuestionUpdate(BaseModel):
     content: Optional[str] = None
@@ -153,6 +161,7 @@ class QuestionUpdate(BaseModel):
     options: Optional[List[str]] = None
     scores: Optional[List[int]] = None
     shuffle_options: Optional[bool] = None
+    parent_case_id: Optional[int] = None  # 新增
 
 class QuestionOut(BaseModel):
     id: int
@@ -161,6 +170,7 @@ class QuestionOut(BaseModel):
     options: list
     scores: list
     shuffle_options: bool
+    parent_case_id: Optional[int] = None  # 新增
     created_at: datetime
     updated_at: datetime
     class Config:
@@ -368,12 +378,24 @@ def read_users_me(token: str = Depends(OAuth2PasswordBearer(tokenUrl="/login")),
     user = db.query(User).filter(User.username == username).first()
     if user is None:
         raise HTTPException(status_code=404, detail="用户不存在")
-    return {"username": user.username, "real_name": user.real_name, "role": user.role, "email": user.email, "phone": user.phone}
+    return {
+        "username": user.username,
+        "real_name": user.real_name,
+        "role": user.role,
+        "email": user.email,
+        "phone": user.phone,
+        "gender": user.gender,
+        "age": user.age,
+        "position": user.position
+    }
 
 # 用户信息更新模型
 class UserProfileUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
+    gender: Optional[str] = None
+    age: Optional[int] = None
+    position: Optional[str] = None
 
 class UserPasswordUpdate(BaseModel):
     old_password: str
@@ -399,11 +421,17 @@ def update_user_profile(
     if user is None:
         raise HTTPException(status_code=404, detail="用户不存在")
     
-    # 更新邮箱和手机号
+    # 更新邮箱、手机号、性别、年龄、岗位
     if profile_update.email is not None:
         user.email = profile_update.email
     if profile_update.phone is not None:
         user.phone = profile_update.phone
+    if profile_update.gender is not None:
+        user.gender = profile_update.gender
+    if profile_update.age is not None:
+        user.age = profile_update.age
+    if profile_update.position is not None:
+        user.position = profile_update.position
     
     db.commit()
     db.refresh(user)
@@ -413,7 +441,10 @@ def update_user_profile(
         "real_name": user.real_name,
         "role": user.role,
         "email": user.email,
-        "phone": user.phone
+        "phone": user.phone,
+        "gender": user.gender,
+        "age": user.age,
+        "position": user.position
     }
 
 # 更新用户密码
@@ -534,7 +565,8 @@ def start_assessment(
                 "type": question.type,
                 "options": question.options,
                 "scores": question.scores,
-                "order_num": pq.order_num
+                "order_num": pq.order_num,
+                "parent_case_id": getattr(question, 'parent_case_id', None)  # 新增
             })
     return {
         "assignment_id": assignment.id,
@@ -659,7 +691,9 @@ def create_question(q: QuestionCreate, db: Session = Depends(get_db)):
         content=q.content,
         type=q.type,
         options=q.options,
-        scores=q.scores
+        scores=q.scores,
+        shuffle_options=q.shuffle_options if hasattr(q, 'shuffle_options') else False,
+        parent_case_id=q.parent_case_id
     )
     db.add(question)
     db.commit()
@@ -681,18 +715,27 @@ def update_question(question_id: int, q: QuestionUpdate, db: Session = Depends(g
 # 删除题目
 @router.delete("/{question_id}")
 def delete_question(question_id: int, db: Session = Depends(get_db)):
-    """删除题目（先删除相关引用）"""
+    """删除题目（先检查是否被分配到试卷/有答题记录）"""
     try:
         # 检查题目是否存在
         question = db.query(Question).filter(Question.id == question_id).first()
         if not question:
             raise HTTPException(status_code=404, detail="题目不存在")
-        
-        # 先删除试卷题目关联记录
+        # 检查是否有答题记录
+        answer_count = db.execute(
+            text("SELECT COUNT(*) FROM answers WHERE question_id = :qid"),
+            {"qid": question_id}
+        ).scalar()
+        if answer_count > 0:
+            raise HTTPException(status_code=400, detail="该题目已有答题记录，无法删除。")
+        # 检查是否被分配到试卷
         paper_questions = db.query(PaperQuestion).filter(PaperQuestion.question_id == question_id).all()
-        for pq in paper_questions:
-            db.delete(pq)
-        
+        if paper_questions:
+            # 查询所有分配的试卷
+            paper_ids = list(set([pq.paper_id for pq in paper_questions]))
+            papers = db.query(Paper).filter(Paper.id.in_(paper_ids)).all()
+            paper_names = [f"{p.name}(ID:{p.id})" for p in papers]
+            raise HTTPException(status_code=400, detail=f"题目已被分配给试卷：{', '.join(paper_names)}，请先在试卷管理界面移除该题目后再删除。")
         # 删除题目
         db.delete(question)
         db.commit()
@@ -731,7 +774,9 @@ def import_questions_from_word(file: UploadFile = File(...)):
         elif text[0] in "ABCD" and (text[1] == '.' or text[1] == '．'):
             # 选项，如"A.内容"
             if current_question is not None:
-                current_question["options"].append(text)
+                # 用正则去除A./B./C./D.等前缀
+                clean_text = re.sub(r'^[A-DＡ-Ｄa-dａ-ｄ][\.、．\)]\s*', '', text)
+                current_question["options"].append(clean_text)
         else:
             # 兼容没有"场景："的题干
             if current_question is not None and not current_question["content"]:
@@ -785,42 +830,42 @@ def update_paper(paper_id: str, p: PaperUpdate, db: Session = Depends(get_db)):
 # 删除试卷
 @paper_router.delete("/{paper_id}")
 def delete_paper(paper_id: str, db: Session = Depends(get_db)):
-    """删除试卷（先删除所有相关记录）"""
+    """删除试卷（自动删除所有相关重做申请和分配记录）"""
     try:
         paper_id_int = int(paper_id)
         # 检查试卷是否存在
         paper = db.query(Paper).filter(Paper.id == paper_id_int).first()
         if not paper:
             raise HTTPException(status_code=404, detail="试卷不存在")
-        
-        # 1. 先删除试卷分配记录
+        # 检查是否还有题目
+        paper_questions = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id_int).all()
+        if paper_questions:
+            # 查询所有题目
+            question_ids = [pq.question_id for pq in paper_questions]
+            questions = db.query(Question).filter(Question.id.in_(question_ids)).all()
+            question_infos = [f"{q.content[:20]}...(ID:{q.id})" for q in questions]
+            raise HTTPException(status_code=400, detail=f"试卷下还有题目未移除：{', '.join(question_infos)}，请先删除所有分配给该试卷的题目后再删除试卷。")
+        # 1. 先删除试卷分配记录前，先删除所有相关redo_requests
         assignments = db.query(PaperAssignment).filter(PaperAssignment.paper_id == paper_id_int).all()
+        assignment_ids = [a.id for a in assignments]
+        if assignment_ids:
+            db.execute(text("DELETE FROM redo_requests WHERE assignment_id IN :ids"), {"ids": tuple(assignment_ids)})
         for assignment in assignments:
             db.delete(assignment)
-        
-        # 2. 删除试卷题目关联记录
-        paper_questions = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id_int).all()
-        for pq in paper_questions:
-            db.delete(pq)
-        
-        # 3. 删除试卷维度（先删除子维度，再删除父维度）
-        # 先删除所有子维度
+        # 2. 删除试卷维度（先删除子维度，再删除父维度）
         child_dimensions = db.query(Dimension).filter(
             Dimension.paper_id == paper_id_int,
             Dimension.parent_id.isnot(None)
         ).all()
         for child_dim in child_dimensions:
             db.delete(child_dim)
-        
-        # 再删除父维度
         parent_dimensions = db.query(Dimension).filter(
             Dimension.paper_id == paper_id_int,
             Dimension.parent_id.is_(None)
         ).all()
         for parent_dim in parent_dimensions:
             db.delete(parent_dim)
-        
-        # 4. 最后删除试卷本身
+        # 3. 最后删除试卷本身
         db.delete(paper)
         db.commit()
         return {"msg": "删除成功"}
@@ -898,7 +943,8 @@ def get_paper_questions(paper_id: str, db: Session = Depends(get_db)):
                 "type": question.type,
                 "options": formatted_options,
                 "order_num": pq.order_num,
-                "dimension": dimension_info
+                "dimension": dimension_info,
+                "parent_case_id": question.parent_case_id
             })
     return {"questions": questions}
 
@@ -992,6 +1038,41 @@ def add_questions_to_paper(paper_id: str, questions: List[QuestionWithDimensionR
     db.commit()
     return {"msg": "添加成功"}
 
+@paper_router.delete("/{paper_id}/assignment/{assignment_id}")
+def revoke_assignment(paper_id: int, assignment_id: int, db: Session = Depends(get_db)):
+    """撤销单个试卷分配（同时删除相关重做申请）"""
+    try:
+        assignment = db.query(PaperAssignment).filter(PaperAssignment.id == assignment_id, PaperAssignment.paper_id == paper_id).first()
+        if not assignment:
+            raise HTTPException(status_code=404, detail="分配记录不存在")
+        # 删除相关重做申请
+        db.execute(text("DELETE FROM redo_requests WHERE assignment_id = :aid"), {"aid": assignment_id})
+        db.delete(assignment)
+        db.commit()
+        return {"msg": "撤销分配成功"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"撤销分配失败: {str(e)}")
+
+@paper_router.delete("/{paper_id}/assignments")
+def revoke_all_assignments(paper_id: int, db: Session = Depends(get_db)):
+    """撤销该试卷的所有分配（同时删除相关重做申请）"""
+    try:
+        assignments = db.query(PaperAssignment).filter(PaperAssignment.paper_id == paper_id).all()
+        assignment_ids = [a.id for a in assignments]
+        if assignment_ids:
+            db.execute(text("DELETE FROM redo_requests WHERE assignment_id IN :ids"), {"ids": tuple(assignment_ids)})
+        for assignment in assignments:
+            db.delete(assignment)
+        db.commit()
+        return {"msg": "已撤销全部分配"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"撤销全部分配失败: {str(e)}")
+
+
 # 删除试卷题目
 @paper_router.delete("/{paper_id}/questions")
 @paper_router.delete("/{paper_id}/questions/")
@@ -1012,6 +1093,405 @@ def delete_questions_from_paper(paper_id: str, request: QuestionIdsRequest, db: 
     db.commit()
     return {"msg": f"成功删除 {deleted_count} 道题目"}
 
+# 题目乱序相关API
+@app.post("/papers/{paper_id}/shuffle-questions", summary="启用/禁用题目乱序")
+def toggle_question_shuffle(
+    paper_id: int,
+    enable_shuffle: bool = Body(..., embed=True),
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="/login")),
+    db: Session = Depends(get_db)
+):
+    """启用或禁用试卷的题目乱序功能"""
+    try:
+        # 检查试卷是否存在
+        paper = db.query(Paper).filter(Paper.id == paper_id).first()
+        if not paper:
+            raise HTTPException(status_code=404, detail="试卷不存在")
+        
+        # 获取试卷的所有题目
+        questions = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).all()
+        if not questions:
+            raise HTTPException(status_code=400, detail="试卷没有题目")
+        
+        if enable_shuffle:
+            # 启用乱序
+            import random
+            import json
+            
+            # 生成随机种子
+            shuffle_seed = random.randint(1, 999999)
+            
+            # 获取题目ID列表
+            question_ids = [q.question_id for q in questions]
+            
+            # 使用种子生成随机顺序
+            random.seed(shuffle_seed)
+            shuffled_ids = question_ids.copy()
+            random.shuffle(shuffled_ids)
+            
+            # 更新所有题目的乱序设置
+            for question in questions:
+                question.is_shuffled = True
+                question.shuffle_seed = shuffle_seed
+                question.shuffled_order = shuffled_ids
+            
+            db.commit()
+            
+            return {
+                "message": "题目乱序已启用",
+                "shuffle_seed": shuffle_seed,
+                "question_count": len(questions),
+                "shuffled_order": shuffled_ids
+            }
+        else:
+            # 禁用乱序
+            for question in questions:
+                question.is_shuffled = False
+                question.shuffle_seed = None
+                question.shuffled_order = None
+            
+            db.commit()
+            
+            return {"message": "题目乱序已禁用"}
+            
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"设置题目乱序失败: {str(e)}")
+
+@app.get("/papers/{paper_id}/shuffle-status", summary="获取题目乱序状态")
+def get_shuffle_status(
+    paper_id: int,
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="/login")),
+    db: Session = Depends(get_db)
+):
+    """获取试卷的题目乱序状态"""
+    try:
+        # 检查试卷是否存在
+        paper = db.query(Paper).filter(Paper.id == paper_id).first()
+        if not paper:
+            raise HTTPException(status_code=404, detail="试卷不存在")
+        
+        # 获取第一个题目的乱序状态（所有题目应该一致）
+        first_question = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).first()
+        
+        if not first_question:
+            return {
+                "paper_id": paper_id,
+                "is_shuffled": False,
+                "shuffle_seed": None,
+                "question_count": 0
+            }
+        
+        return {
+            "paper_id": paper_id,
+            "is_shuffled": first_question.is_shuffled,
+            "shuffle_seed": first_question.shuffle_seed,
+            "question_count": db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).count(),
+            "shuffled_order": first_question.shuffled_order if first_question.is_shuffled else None
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取乱序状态失败: {str(e)}")
+
+@app.get("/papers/{paper_id}/questions", summary="获取试卷题目（支持乱序）")
+def get_paper_questions_with_shuffle(
+    paper_id: int,
+    user_id: int = Query(None, description="用户ID，用于获取个人题目顺序"),
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="/login")),
+    db: Session = Depends(get_db)
+):
+    """获取试卷题目，支持乱序功能"""
+    try:
+        # 检查试卷是否存在
+        paper = db.query(Paper).filter(Paper.id == paper_id).first()
+        if not paper:
+            raise HTTPException(status_code=404, detail="试卷不存在")
+        
+        # 获取试卷题目
+        paper_questions = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).all()
+        
+        if not paper_questions:
+            return {"questions": []}
+        
+        # 检查是否启用乱序
+        is_shuffled = paper_questions[0].is_shuffled if paper_questions else False
+        
+        if is_shuffled and user_id:
+            # 如果启用乱序且有用户ID，检查用户是否有个人题目顺序
+            assignment = db.query(PaperAssignment).filter(
+                PaperAssignment.paper_id == paper_id,
+                PaperAssignment.user_id == user_id
+            ).first()
+            
+            if assignment and assignment.question_order:
+                # 使用用户的个人题目顺序
+                question_order = assignment.question_order
+            else:
+                # 使用试卷的乱序顺序
+                question_order = paper_questions[0].shuffled_order
+                
+            # 按乱序顺序重新排列题目
+            question_map = {pq.question_id: pq for pq in paper_questions}
+            ordered_questions = []
+            
+            for q_id in question_order:
+                if q_id in question_map:
+                    ordered_questions.append(question_map[q_id])
+        else:
+            # 使用原始顺序
+            ordered_questions = sorted(paper_questions, key=lambda x: x.order_num)
+        
+        # 获取题目详细信息
+        question_ids = [pq.question_id for pq in ordered_questions]
+        questions = db.query(Question).filter(Question.id.in_(question_ids)).all()
+        question_map = {q.id: q for q in questions}
+        
+        # 组装返回数据
+        result = []
+        for i, pq in enumerate(ordered_questions):
+            question = question_map.get(pq.question_id)
+            if question:
+                result.append({
+                    "id": question.id,
+                    "content": question.content,
+                    "type": question.type,
+                    "options": question.options,
+                    "scores": question.scores,
+                    "dimension_id": pq.dimension_id,
+                    "order_num": i + 1,  # 显示顺序
+                    "original_order": pq.order_num,  # 原始顺序
+                    "parent_case_id": question.parent_case_id
+                })
+        
+        return {
+            "paper_id": paper_id,
+            "is_shuffled": is_shuffled,
+            "questions": result
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取试卷题目失败: {str(e)}")
+
+@app.get("/papers/{paper_id}/questions-with-options", summary="获取试卷题目（支持选项乱序）")
+def get_paper_questions_with_option_shuffle(
+    paper_id: int,
+    user_id: int = Query(None, description="用户ID，用于获取个人选项顺序"),
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="/login")),
+    db: Session = Depends(get_db)
+):
+    """获取试卷题目，支持选项乱序功能"""
+    try:
+        # 检查试卷是否存在
+        paper = db.query(Paper).filter(Paper.id == paper_id).first()
+        if not paper:
+            raise HTTPException(status_code=404, detail="试卷不存在")
+        
+        # 获取试卷题目
+        paper_questions = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).all()
+        
+        if not paper_questions:
+            return {"questions": []}
+        
+        # 检查是否启用题目乱序
+        is_shuffled = paper_questions[0].is_shuffled if paper_questions else False
+        
+        if is_shuffled and user_id:
+            # 如果启用题目乱序且有用户ID，检查用户是否有个人题目顺序
+            assignment = db.query(PaperAssignment).filter(
+                PaperAssignment.paper_id == paper_id,
+                PaperAssignment.user_id == user_id
+            ).first()
+            
+            if assignment and assignment.question_order:
+                # 使用用户的个人题目顺序
+                question_order = assignment.question_order
+            else:
+                # 使用试卷的乱序顺序
+                question_order = paper_questions[0].shuffled_order
+                
+            # 按乱序顺序重新排列题目
+            question_map = {pq.question_id: pq for pq in paper_questions}
+            ordered_questions = []
+            
+            for q_id in question_order:
+                if q_id in question_map:
+                    ordered_questions.append(question_map[q_id])
+        else:
+            # 使用原始顺序
+            ordered_questions = sorted(paper_questions, key=lambda x: x.order_num)
+        
+        # 获取题目详细信息
+        question_ids = [pq.question_id for pq in ordered_questions]
+        questions = db.query(Question).filter(Question.id.in_(question_ids)).all()
+        question_map = {q.id: q for q in questions}
+        
+        # 获取用户的选项顺序
+        option_orders = {}
+        if user_id:
+            assignment = db.query(PaperAssignment).filter(
+                PaperAssignment.paper_id == paper_id,
+                PaperAssignment.user_id == user_id
+            ).first()
+            
+            if assignment and assignment.option_orders:
+                option_orders = assignment.option_orders
+        
+        # 组装返回数据
+        result = []
+        labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+        for i, pq in enumerate(ordered_questions):
+            question = question_map.get(pq.question_id)
+            if question:
+                # 处理选项顺序
+                original_options = question.options
+                original_scores = question.scores
+                if question.shuffle_options and question.id in option_orders:
+                    option_order = option_orders[question.id]
+                    shuffled_options = [original_options[j] for j in option_order]
+                    shuffled_scores = [original_scores[j] for j in option_order]
+                else:
+                    shuffled_options = original_options
+                    shuffled_scores = original_scores
+                # 组装前端需要的格式
+                formatted_options = []
+                for idx, (opt, score) in enumerate(zip(shuffled_options, shuffled_scores)):
+                    formatted_options.append({
+                        "label": labels[idx] if idx < len(labels) else chr(65 + idx),
+                        "text": opt,
+                        "score": score
+                    })
+                result.append({
+                    "id": question.id,
+                    "content": question.content,
+                    "type": question.type,
+                    "options": formatted_options,
+                    "shuffle_options": question.shuffle_options,
+                    "dimension_id": pq.dimension_id,
+                    "order_num": i + 1,  # 显示顺序
+                    "original_order": pq.order_num,  # 原始顺序
+                    "parent_case_id": question.parent_case_id
+                })
+        
+        return {
+            "paper_id": paper_id,
+            "is_shuffled": is_shuffled,
+            "questions": result
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取试卷题目失败: {str(e)}")
+
+@router.post("/import_excel")
+def import_questions_from_excel(file: UploadFile = File(...)):
+    """
+    解析Excel文件，返回题目预览数据，不直接入库。
+    Excel格式要求：
+    | 题目内容 | 选项A | 选项B | 选项C | 选项D | 题目类型 | 选项乱序 |
+    """
+    content = file.file.read()
+    df = pd.read_excel(io.BytesIO(content))
+    questions = []
+    option_cols = [col for col in df.columns if re.match(r"选项[ABCD]", str(col))]
+    for idx, row in df.iterrows():
+        q_content = str(row.get('题目内容', '')).strip()
+        q_type = str(row.get('题目类型', 'single')).strip().lower() or 'single'
+        shuffle_options = str(row.get('选项乱序', 'False')).strip().lower() in ['true', '1', '是', 'yes']
+        options = []
+        for col in option_cols:
+            opt = str(row.get(col, '')).strip()
+            opt = re.sub(r'^[A-D][\.|．、)]\s*', '', opt)
+            if opt:
+                options.append(opt)
+        default_scores = [10, 7, 4, 1] + [0] * (len(options) - 4) if len(options) > 4 else [10, 7, 4, 1][:len(options)]
+        questions.append({
+            "content": q_content,
+            "type": q_type,
+            "options": options,
+            "scores": default_scores,
+            "shuffle_options": shuffle_options
+        })
+    return {"questions": questions}
+
+@router.post("/import_excel_confirm")
+def import_questions_excel_confirm(questions: List[dict] = Body(...), db: Session = Depends(get_db)):
+    """
+    批量写入题库。
+    """
+    created = []
+    for q in questions:
+        question = Question(
+            content=q.get('content', ''),
+            type=q.get('type', 'single'),
+            options=q.get('options', []),
+            scores=q.get('scores', []),
+            shuffle_options=q.get('shuffle_options', False)
+        )
+        db.add(question)
+        db.flush()  # 获取ID
+        created.append({"id": question.id, "content": question.content})
+    db.commit()
+    return {"created": created, "count": len(created)}
+
+# 试卷相关Excel导入
+@paper_router.post("/{paper_id}/import_excel")
+def import_paper_questions_from_excel(paper_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """
+    解析Excel文件，返回题目预览数据，不直接入库。
+    """
+    content = file.file.read()
+    df = pd.read_excel(io.BytesIO(content))
+    questions = []
+    option_cols = [col for col in df.columns if re.match(r"选项[ABCD]", str(col))]
+    for idx, row in df.iterrows():
+        q_content = str(row.get('题目内容', '')).strip()
+        q_type = str(row.get('题目类型', 'single')).strip().lower() or 'single'
+        shuffle_options = str(row.get('选项乱序', 'False')).strip().lower() in ['true', '1', '是', 'yes']
+        options = []
+        for col in option_cols:
+            opt = str(row.get(col, '')).strip()
+            opt = re.sub(r'^[A-D][\.|．、)]\s*', '', opt)
+            if opt:
+                options.append(opt)
+        default_scores = [10, 7, 4, 1] + [0] * (len(options) - 4) if len(options) > 4 else [10, 7, 4, 1][:len(options)]
+        questions.append({
+            "content": q_content,
+            "type": q_type,
+            "options": options,
+            "scores": default_scores,
+            "shuffle_options": shuffle_options
+        })
+    return {"questions": questions}
+
+@paper_router.post("/{paper_id}/import_excel_confirm")
+def import_paper_questions_excel_confirm(paper_id: int, questions: List[dict] = Body(...), db: Session = Depends(get_db)):
+    """
+    批量写入试卷。
+    """
+    created = []
+    order_num = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).count() + 1
+    for q in questions:
+        # 先创建题目
+        question = Question(
+            content=q.get('content', ''),
+            type=q.get('type', 'single'),
+            options=q.get('options', []),
+            scores=q.get('scores', []),
+            shuffle_options=q.get('shuffle_options', False)
+        )
+        db.add(question)
+        db.flush()  # 获取ID
+        # 关联到试卷
+        pq = PaperQuestion(
+            paper_id=paper_id,
+            question_id=question.id,
+            order_num=order_num
+        )
+        db.add(pq)
+        order_num += 1
+        created.append({"id": question.id, "content": question.content})
+    db.commit()
+    return {"created": created, "count": len(created)}
+
 # 获取单个试卷
 @paper_router.get("/{paper_id}")
 def get_paper(paper_id: str, db: Session = Depends(get_db)):
@@ -1023,8 +1503,20 @@ def get_paper(paper_id: str, db: Session = Depends(get_db)):
 
 # 获取用户列表（管理员用）
 @app.get("/users", summary="获取用户列表")
-def get_users(db: Session = Depends(get_db)):
-    users = db.query(User).all()
+def get_users(
+    position: str = Query(None, description="岗位"),
+    age_min: int = Query(None, description="最小年龄"),
+    age_max: int = Query(None, description="最大年龄"),
+    db: Session = Depends(get_db)
+):
+    query = db.query(User)
+    if position:
+        query = query.filter(User.position == position)
+    if age_min is not None:
+        query = query.filter(User.age >= age_min)
+    if age_max is not None:
+        query = query.filter(User.age <= age_max)
+    users = query.all()
     return [
         {
             "id": user.id,
@@ -1033,7 +1525,10 @@ def get_users(db: Session = Depends(get_db)):
             "role": user.role,
             "email": user.email,
             "phone": user.phone,
-            "is_active": user.is_active
+            "is_active": user.is_active,
+            "gender": user.gender,
+            "age": user.age,
+            "position": user.position
         }
         for user in users
     ]
@@ -1044,8 +1539,20 @@ participant_router = APIRouter(prefix="/participants", tags=["被试者管理"])
 # 获取被试者列表
 @participant_router.get("/", response_model=List[ParticipantOut])
 @participant_router.get("", response_model=List[ParticipantOut])
-def get_participants(db: Session = Depends(get_db)):
-    participants = db.query(User).filter(User.role == UserRole.participant).order_by(User.id.desc()).all()
+def get_participants(
+    position: str = Query(None, description="岗位"),
+    age_min: int = Query(None, description="最小年龄"),
+    age_max: int = Query(None, description="最大年龄"),
+    db: Session = Depends(get_db)
+):
+    query = db.query(User).filter(User.role == UserRole.participant)
+    if position:
+        query = query.filter(User.position == position)
+    if age_min is not None:
+        query = query.filter(User.age >= age_min)
+    if age_max is not None:
+        query = query.filter(User.age <= age_max)
+    participants = query.order_by(User.id.desc()).all()
     return participants
 
 # 创建被试者
@@ -1869,55 +2376,52 @@ class BatchDeleteRequest(BaseModel):
 def get_reports(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(10, ge=1, le=100, description="每页数量"),
-    user_id: Optional[int] = Query(None, description="用户ID筛选"),
-    paper_id: Optional[int] = Query(None, description="试卷ID筛选"),
-    status: Optional[str] = Query(None, description="状态筛选"),
+    user_id: int = Query(None, description="用户ID筛选"),
+    paper_id: int = Query(None, description="试卷ID筛选"),
+    status: str = Query(None, description="状态筛选"),
+    position: str = Query(None, description="岗位"),
+    age_min: int = Query(None, description="最小年龄"),
+    age_max: int = Query(None, description="最大年龄"),
     token: str = Depends(OAuth2PasswordBearer(tokenUrl="/login")),
     db: Session = Depends(get_db)
 ):
-    """获取报告列表，支持分页和筛选"""
-    try:
-        # 构建查询条件
-        query = db.query(Report).join(User).join(Paper)
-        
-        if user_id:
-            query = query.filter(Report.user_id == user_id)
-        if paper_id:
-            query = query.filter(Report.paper_id == paper_id)
-        if status:
-            query = query.filter(Report.status == status)
-        
-        # 获取总数
-        total = query.count()
-        
-        # 分页查询
-        reports = query.offset((page - 1) * page_size).limit(page_size).all()
-        
-        # 转换为响应格式
-        report_list = []
-        for report in reports:
-            report_list.append(ReportOut(
-                id=report.id,
-                user_id=report.user_id,
-                user_name=report.user.real_name or report.user.username,
-                paper_id=report.paper_id,
-                paper_name=report.paper.name,
-                file_path=report.file_path,
-                file_name=report.file_name,
-                file_size=report.file_size,
-                status=report.status,
-                error_message=report.error_message,
-                created_at=report.created_at
-            ))
-        
-        return ReportListResponse(
-            reports=report_list,
-            total=total,
-            page=page,
-            page_size=page_size
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取报告列表失败: {str(e)}")
+    query = db.query(Report).join(User, Report.user_id == User.id)
+    if user_id:
+        query = query.filter(Report.user_id == user_id)
+    if paper_id:
+        query = query.filter(Report.paper_id == paper_id)
+    if status:
+        query = query.filter(Report.status == status)
+    if position:
+        query = query.filter(User.position == position)
+    if age_min is not None:
+        query = query.filter(User.age >= age_min)
+    if age_max is not None:
+        query = query.filter(User.age <= age_max)
+    total = query.count()
+    reports = query.order_by(Report.created_at.desc()).offset((page-1)*page_size).limit(page_size).all()
+    # ... 保持原有返回结构 ...
+    report_list = []
+    for report in reports:
+        user = report.user
+        paper = report.paper
+        report_list.append({
+            "id": report.id,
+            "user_id": report.user_id,
+            "user_name": user.real_name if user else None,
+            "paper_id": report.paper_id,
+            "paper_name": paper.name if paper else None,
+            "file_path": report.file_path,
+            "file_name": report.file_name,
+            "file_size": report.file_size,
+            "status": report.status,
+            "error_message": report.error_message,
+            "created_at": report.created_at,
+            "gender": user.gender if user else None,
+            "age": user.age if user else None,
+            "position": user.position if user else None
+        })
+    return ReportListResponse(reports=report_list, total=total, page=page, page_size=page_size)
 
 @app.delete("/reports/{report_id}", summary="删除单个报告")
 def delete_report(
@@ -2031,183 +2535,7 @@ def batch_download_reports(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"批量下载报告失败: {str(e)}")
 
-# 题目乱序相关API
-@app.post("/papers/{paper_id}/shuffle-questions", summary="启用/禁用题目乱序")
-def toggle_question_shuffle(
-    paper_id: int,
-    enable_shuffle: bool = Body(..., embed=True),
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="/login")),
-    db: Session = Depends(get_db)
-):
-    """启用或禁用试卷的题目乱序功能"""
-    try:
-        # 检查试卷是否存在
-        paper = db.query(Paper).filter(Paper.id == paper_id).first()
-        if not paper:
-            raise HTTPException(status_code=404, detail="试卷不存在")
-        
-        # 获取试卷的所有题目
-        questions = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).all()
-        if not questions:
-            raise HTTPException(status_code=400, detail="试卷没有题目")
-        
-        if enable_shuffle:
-            # 启用乱序
-            import random
-            import json
-            
-            # 生成随机种子
-            shuffle_seed = random.randint(1, 999999)
-            
-            # 获取题目ID列表
-            question_ids = [q.question_id for q in questions]
-            
-            # 使用种子生成随机顺序
-            random.seed(shuffle_seed)
-            shuffled_ids = question_ids.copy()
-            random.shuffle(shuffled_ids)
-            
-            # 更新所有题目的乱序设置
-            for question in questions:
-                question.is_shuffled = True
-                question.shuffle_seed = shuffle_seed
-                question.shuffled_order = shuffled_ids
-            
-            db.commit()
-            
-            return {
-                "message": "题目乱序已启用",
-                "shuffle_seed": shuffle_seed,
-                "question_count": len(questions),
-                "shuffled_order": shuffled_ids
-            }
-        else:
-            # 禁用乱序
-            for question in questions:
-                question.is_shuffled = False
-                question.shuffle_seed = None
-                question.shuffled_order = None
-            
-            db.commit()
-            
-            return {"message": "题目乱序已禁用"}
-            
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"设置题目乱序失败: {str(e)}")
 
-@app.get("/papers/{paper_id}/shuffle-status", summary="获取题目乱序状态")
-def get_shuffle_status(
-    paper_id: int,
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="/login")),
-    db: Session = Depends(get_db)
-):
-    """获取试卷的题目乱序状态"""
-    try:
-        # 检查试卷是否存在
-        paper = db.query(Paper).filter(Paper.id == paper_id).first()
-        if not paper:
-            raise HTTPException(status_code=404, detail="试卷不存在")
-        
-        # 获取第一个题目的乱序状态（所有题目应该一致）
-        first_question = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).first()
-        
-        if not first_question:
-            return {
-                "paper_id": paper_id,
-                "is_shuffled": False,
-                "shuffle_seed": None,
-                "question_count": 0
-            }
-        
-        return {
-            "paper_id": paper_id,
-            "is_shuffled": first_question.is_shuffled,
-            "shuffle_seed": first_question.shuffle_seed,
-            "question_count": db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).count(),
-            "shuffled_order": first_question.shuffled_order if first_question.is_shuffled else None
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取乱序状态失败: {str(e)}")
-
-@app.get("/papers/{paper_id}/questions", summary="获取试卷题目（支持乱序）")
-def get_paper_questions_with_shuffle(
-    paper_id: int,
-    user_id: int = Query(None, description="用户ID，用于获取个人题目顺序"),
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="/login")),
-    db: Session = Depends(get_db)
-):
-    """获取试卷题目，支持乱序功能"""
-    try:
-        # 检查试卷是否存在
-        paper = db.query(Paper).filter(Paper.id == paper_id).first()
-        if not paper:
-            raise HTTPException(status_code=404, detail="试卷不存在")
-        
-        # 获取试卷题目
-        paper_questions = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).all()
-        
-        if not paper_questions:
-            return {"questions": []}
-        
-        # 检查是否启用乱序
-        is_shuffled = paper_questions[0].is_shuffled if paper_questions else False
-        
-        if is_shuffled and user_id:
-            # 如果启用乱序且有用户ID，检查用户是否有个人题目顺序
-            assignment = db.query(PaperAssignment).filter(
-                PaperAssignment.paper_id == paper_id,
-                PaperAssignment.user_id == user_id
-            ).first()
-            
-            if assignment and assignment.question_order:
-                # 使用用户的个人题目顺序
-                question_order = assignment.question_order
-            else:
-                # 使用试卷的乱序顺序
-                question_order = paper_questions[0].shuffled_order
-                
-            # 按乱序顺序重新排列题目
-            question_map = {pq.question_id: pq for pq in paper_questions}
-            ordered_questions = []
-            
-            for q_id in question_order:
-                if q_id in question_map:
-                    ordered_questions.append(question_map[q_id])
-        else:
-            # 使用原始顺序
-            ordered_questions = sorted(paper_questions, key=lambda x: x.order_num)
-        
-        # 获取题目详细信息
-        question_ids = [pq.question_id for pq in ordered_questions]
-        questions = db.query(Question).filter(Question.id.in_(question_ids)).all()
-        question_map = {q.id: q for q in questions}
-        
-        # 组装返回数据
-        result = []
-        for i, pq in enumerate(ordered_questions):
-            question = question_map.get(pq.question_id)
-            if question:
-                result.append({
-                    "id": question.id,
-                    "content": question.content,
-                    "type": question.type,
-                    "options": question.options,
-                    "scores": question.scores,
-                    "dimension_id": pq.dimension_id,
-                    "order_num": i + 1,  # 显示顺序
-                    "original_order": pq.order_num  # 原始顺序
-                })
-        
-        return {
-            "paper_id": paper_id,
-            "is_shuffled": is_shuffled,
-            "questions": result
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取试卷题目失败: {str(e)}")
 
 @app.post("/assignments/{assignment_id}/generate-question-order", summary="为用户生成个人题目顺序")
 def generate_user_question_order(
@@ -2329,109 +2657,168 @@ def generate_user_option_orders(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"生成选项顺序失败: {str(e)}")
 
-@app.get("/papers/{paper_id}/questions-with-options", summary="获取试卷题目（支持选项乱序）")
-def get_paper_questions_with_option_shuffle(
-    paper_id: int,
-    user_id: int = Query(None, description="用户ID，用于获取个人选项顺序"),
+# ====== RedoRequest ORM模型 ======
+class RedoRequest(Base):
+    __tablename__ = "redo_requests"
+    id = Column(Integer, primary_key=True, index=True)
+    assignment_id = Column(Integer, ForeignKey("paper_assignments.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    paper_id = Column(Integer, ForeignKey("papers.id"), nullable=False)
+    request_time = Column(DateTime, default=datetime.utcnow)
+    status = Column(String(20), default="pending")  # pending, processed
+    admin_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # 处理人
+    process_time = Column(DateTime)
+    # 关系
+    user = relationship("User", foreign_keys=[user_id])
+    paper = relationship("Paper", foreign_keys=[paper_id])
+    assignment = relationship("PaperAssignment", foreign_keys=[assignment_id])
+    admin = relationship("User", foreign_keys=[admin_id])
+
+# ====== RedoRequest Pydantic模型 ======
+class RedoRequestCreate(BaseModel):
+    assignment_id: int
+
+class RedoRequestOut(BaseModel):
+    id: int
+    assignment_id: int
+    user_id: int
+    paper_id: int
+    request_time: datetime
+    status: str
+    admin_id: int | None = None
+    process_time: datetime | None = None
+    user_name: str | None = None
+    paper_name: str | None = None
+    class Config:
+        orm_mode = True
+
+# ... existing code ...
+# ====== Redo相关API ======
+from fastapi import Security
+
+@app.post("/redo-request", summary="被试者申请重做")
+def create_redo_request(
+    req: RedoRequestCreate,
     token: str = Depends(OAuth2PasswordBearer(tokenUrl="/login")),
     db: Session = Depends(get_db)
 ):
-    """获取试卷题目，支持选项乱序功能"""
     try:
-        # 检查试卷是否存在
-        paper = db.query(Paper).filter(Paper.id == paper_id).first()
-        if not paper:
-            raise HTTPException(status_code=404, detail="试卷不存在")
-        
-        # 获取试卷题目
-        paper_questions = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).all()
-        
-        if not paper_questions:
-            return {"questions": []}
-        
-        # 检查是否启用题目乱序
-        is_shuffled = paper_questions[0].is_shuffled if paper_questions else False
-        
-        if is_shuffled and user_id:
-            # 如果启用题目乱序且有用户ID，检查用户是否有个人题目顺序
-            assignment = db.query(PaperAssignment).filter(
-                PaperAssignment.paper_id == paper_id,
-                PaperAssignment.user_id == user_id
-            ).first()
-            
-            if assignment and assignment.question_order:
-                # 使用用户的个人题目顺序
-                question_order = assignment.question_order
-            else:
-                # 使用试卷的乱序顺序
-                question_order = paper_questions[0].shuffled_order
-                
-            # 按乱序顺序重新排列题目
-            question_map = {pq.question_id: pq for pq in paper_questions}
-            ordered_questions = []
-            
-            for q_id in question_order:
-                if q_id in question_map:
-                    ordered_questions.append(question_map[q_id])
-        else:
-            # 使用原始顺序
-            ordered_questions = sorted(paper_questions, key=lambda x: x.order_num)
-        
-        # 获取题目详细信息
-        question_ids = [pq.question_id for pq in ordered_questions]
-        questions = db.query(Question).filter(Question.id.in_(question_ids)).all()
-        question_map = {q.id: q for q in questions}
-        
-        # 获取用户的选项顺序
-        option_orders = {}
-        if user_id:
-            assignment = db.query(PaperAssignment).filter(
-                PaperAssignment.paper_id == paper_id,
-                PaperAssignment.user_id == user_id
-            ).first()
-            
-            if assignment and assignment.option_orders:
-                option_orders = assignment.option_orders
-        
-        # 组装返回数据
-        result = []
-        for i, pq in enumerate(ordered_questions):
-            question = question_map.get(pq.question_id)
-            if question:
-                # 处理选项顺序
-                original_options = question.options
-                original_scores = question.scores
-                
-                if question.shuffle_options and question.id in option_orders:
-                    # 使用用户的选项顺序
-                    option_order = option_orders[question.id]
-                    shuffled_options = [original_options[j] for j in option_order]
-                    shuffled_scores = [original_scores[j] for j in option_order]
-                else:
-                    # 使用原始顺序
-                    shuffled_options = original_options
-                    shuffled_scores = original_scores
-                
-                result.append({
-                    "id": question.id,
-                    "content": question.content,
-                    "type": question.type,
-                    "options": shuffled_options,
-                    "scores": shuffled_scores,
-                    "shuffle_options": question.shuffle_options,
-                    "dimension_id": pq.dimension_id,
-                    "order_num": i + 1,  # 显示顺序
-                    "original_order": pq.order_num  # 原始顺序
-                })
-        
-        return {
-            "paper_id": paper_id,
-            "is_shuffled": is_shuffled,
-            "questions": result
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取试卷题目失败: {str(e)}")
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="无效Token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Token校验失败")
+    user = db.query(User).filter(User.username == username).first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    assignment = db.query(PaperAssignment).filter(PaperAssignment.id == req.assignment_id, PaperAssignment.user_id == user.id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="试卷分配不存在")
+    # 检查是否已申请过且未处理
+    exist = db.query(RedoRequest).filter(RedoRequest.assignment_id == req.assignment_id, RedoRequest.status == "pending").first()
+    if exist:
+        raise HTTPException(status_code=400, detail="已申请重做，等待管理员处理")
+    redo = RedoRequest(
+        assignment_id=req.assignment_id,
+        user_id=user.id,
+        paper_id=assignment.paper_id
+    )
+    db.add(redo)
+    db.commit()
+    db.refresh(redo)
+    return {"msg": "重做申请已提交"}
+
+@app.get("/redo-requests", response_model=List[RedoRequestOut], summary="管理员获取所有重做申请")
+def get_redo_requests(
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="/login")),
+    db: Session = Depends(get_db)
+):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        role: str = payload.get("role")
+        if username is None or role != "admin":
+            raise HTTPException(status_code=403, detail="无权限")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Token校验失败")
+    requests = db.query(RedoRequest).filter(RedoRequest.status == "pending").order_by(RedoRequest.request_time.desc()).all()
+    result = []
+    for r in requests:
+        user = db.query(User).filter(User.id == r.user_id).first()
+        paper = db.query(Paper).filter(Paper.id == r.paper_id).first()
+        result.append(RedoRequestOut(
+            id=r.id,
+            assignment_id=r.assignment_id,
+            user_id=r.user_id,
+            paper_id=r.paper_id,
+            request_time=r.request_time,
+            status=r.status,
+            admin_id=r.admin_id,
+            process_time=r.process_time,
+            user_name=user.real_name if user else None,
+            paper_name=paper.name if paper else None
+        ))
+    return result
+
+@app.post("/redo-request/assign", summary="管理员处理单个重做申请并重新分配")
+def process_redo_request(
+    request_id: int = Body(..., embed=True),
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="/login")),
+    db: Session = Depends(get_db)
+):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        role: str = payload.get("role")
+        if username is None or role != "admin":
+            raise HTTPException(status_code=403, detail="无权限")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Token校验失败")
+    redo = db.query(RedoRequest).filter(RedoRequest.id == request_id, RedoRequest.status == "pending").first()
+    if not redo:
+        raise HTTPException(status_code=404, detail="重做申请不存在或已处理")
+    # 重新分配试卷（重置assignment状态）
+    assignment = db.query(PaperAssignment).filter(PaperAssignment.id == redo.assignment_id).first()
+    if assignment:
+        assignment.status = "assigned"
+        assignment.started_at = None
+        assignment.completed_at = None
+        db.commit()
+    redo.status = "processed"
+    redo.admin_id = db.query(User).filter(User.username == username).first().id
+    redo.process_time = datetime.utcnow()
+    db.commit()
+    return {"msg": "已重新分配"}
+
+@app.post("/redo-request/assign-all", summary="管理员一键全部重新分配")
+def process_all_redo_requests(
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="/login")),
+    db: Session = Depends(get_db)
+):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        role: str = payload.get("role")
+        if username is None or role != "admin":
+            raise HTTPException(status_code=403, detail="无权限")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Token校验失败")
+    admin_id = db.query(User).filter(User.username == username).first().id
+    requests = db.query(RedoRequest).filter(RedoRequest.status == "pending").all()
+    for redo in requests:
+        assignment = db.query(PaperAssignment).filter(PaperAssignment.id == redo.assignment_id).first()
+        if assignment:
+            assignment.status = "assigned"
+            assignment.started_at = None
+            assignment.completed_at = None
+        redo.status = "processed"
+        redo.admin_id = admin_id
+        redo.process_time = datetime.utcnow()
+    db.commit()
+    return {"msg": "全部已重新分配"}
+#// ... existing code ...
+
 
 if __name__ == "__main__":
     import uvicorn

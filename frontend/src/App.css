@@ -1,6 +1,9 @@
 #root {
-    width: 100%;
+    width: 100vw;
     height: 100vh;
+    min-height: 100vh;
+    min-width: 100vw;
+    background: #f5f8fa;
 }
 
 .ant-layout {

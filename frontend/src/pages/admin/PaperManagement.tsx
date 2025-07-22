@@ -35,9 +35,12 @@ import {
     FileOutlined,
     TeamOutlined,
     ReloadOutlined,
-    MinusCircleOutlined
+    MinusCircleOutlined,
+    UploadOutlined
 } from '@ant-design/icons';
 import type { TransferDirection } from 'antd/es/transfer';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -78,6 +81,18 @@ interface Dimension {
     created_at: string;
     updated_at: string;
     children?: Dimension[];
+}
+
+// Quill 编辑器配置，增强表格粘贴体验
+const quillModules = {
+    toolbar: [
+        [{ 'header': [1, 2, 3, false] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+        ['blockquote', 'code-block'],
+        ['link', 'image'],
+        ['clean'],
+    ]
 }
 
 const PaperManagement: React.FC = () => {
@@ -130,6 +145,12 @@ const PaperManagement: React.FC = () => {
     const [availableQuestions, setAvailableQuestions] = useState<Question[]>([]);
     const [selectedQuestionsForDimension, setSelectedQuestionsForDimension] = useState<number[]>([]);
     const [matchedQuestions, setMatchedQuestions] = useState<Question[]>([]);
+
+    // 新增：添加案例背景题
+    const [caseModalVisible, setCaseModalVisible] = useState(false);
+    const [caseForm] = Form.useForm();
+    const [caseQuestions, setCaseQuestions] = useState<any[]>([]);
+    const [caseBackground, setCaseBackground] = useState('');
 
     // 获取试卷列表
     const fetchPapers = async () => {
@@ -626,6 +647,24 @@ const PaperManagement: React.FC = () => {
 
     // 保存编辑的题目
     const handleSaveEditQuestion = async (values: any) => {
+        if (editingQuestion && typeof editingQuestion._excelIndex === 'number') {
+            // 编辑的是Excel导入预览题目
+            const idx = editingQuestion._excelIndex;
+            const updated = [...excelImportedQuestions];
+            updated[idx] = {
+                ...updated[idx],
+                content: values.content,
+                type: values.type,
+                shuffle_options: values.shuffle_options,
+                options: values.options,
+                scores: values.scores,
+            };
+            setExcelImportedQuestions(updated);
+            setEditQuestionModalVisible(false);
+            setEditingQuestion(null);
+            editQuestionForm.resetFields();
+            return;
+        }
         if (!editingQuestion) return;
 
         try {
@@ -990,6 +1029,215 @@ const PaperManagement: React.FC = () => {
         },
     ];
 
+    // 新增Excel导入相关状态
+    const [excelImportLoading, setExcelImportLoading] = useState(false);
+    const [excelImportModalVisible, setExcelImportModalVisible] = useState(false);
+    const [excelImportedQuestions, setExcelImportedQuestions] = useState<any[]>([]);
+    const [excelImportFile, setExcelImportFile] = useState<File | null>(null);
+
+    // Excel导入预览
+    const handleImportFromExcel = async (file: File) => {
+        setExcelImportLoading(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            let url = currentPaperId
+                ? `http://localhost:8000/papers/${currentPaperId}/import_excel`
+                : 'http://localhost:8000/questions/import_excel';
+            const response = await fetch(url, {
+                method: 'POST',
+                body: formData,
+            });
+            if (response.ok) {
+                const data = await response.json();
+                const questions = data.questions || [];
+                if (questions.length === 0) {
+                    message.warning('Excel中没有找到有效题目');
+                    setExcelImportLoading(false);
+                    return;
+                }
+                setExcelImportedQuestions(questions);
+                setExcelImportModalVisible(true);
+                setExcelImportFile(file);
+            } else {
+                message.error('解析Excel失败');
+            }
+        } catch (error) {
+            message.error('网络错误');
+            console.error('导入Excel错误:', error);
+        } finally {
+            setExcelImportLoading(false);
+        }
+    };
+
+    // Excel导入确认
+    const handleConfirmImportExcel = async () => {
+        if (excelImportedQuestions.length === 0) return;
+        setExcelImportLoading(true);
+        try {
+            let url = currentPaperId
+                ? `http://localhost:8000/papers/${currentPaperId}/import_excel_confirm`
+                : 'http://localhost:8000/questions/import_excel_confirm';
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(excelImportedQuestions),
+            });
+            if (response.ok) {
+                message.success('Excel题目导入成功');
+                setExcelImportModalVisible(false);
+                setExcelImportedQuestions([]);
+                setExcelImportFile(null);
+                setQuestionModalMode('view');
+                // 刷新题目列表
+                if (currentPaperId) {
+                    await fetchPaperQuestions(currentPaperId);
+                } else {
+                    await fetchQuestions();
+                }
+            } else {
+                message.error('导入题目失败');
+            }
+        } catch (error) {
+            message.error('网络错误');
+            console.error('确认导入Excel错误:', error);
+        } finally {
+            setExcelImportLoading(false);
+        }
+    };
+
+    // 新增：添加案例背景题
+    const handleAddCase = () => {
+        setCaseQuestions([{ content: '', type: 'single', options: ['', '', '', ''], scores: [10, 7, 4, 1], shuffle_options: false }]);
+        setCaseBackground('');
+        setCaseModalVisible(true);
+        caseForm.resetFields();
+    };
+    // 新增：案例背景题提交
+    const handleCaseModalOk = async () => {
+        if (!currentPaperId) return;
+        try {
+            const values = await caseForm.validateFields();
+            if (!caseBackground || caseBackground.trim() === '') {
+                message.error('请输入案例背景内容');
+                return;
+            }
+            // 组装payload
+            const questions = values.questions.map((q: any) => ({
+                ...q,
+                options: q.options.map((item: any) => item.value || item),
+                scores: q.options.map((item: any, idx: number) => Number(item.score ?? q.scores?.[idx] ?? 0)),
+            }));
+            // 先保存案例背景题（主表）
+            const res = await fetch('http://localhost:8000/questions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: caseBackground,
+                    type: 'case',
+                    options: [],
+                    scores: [],
+                    shuffle_options: false
+                })
+            });
+            if (!res.ok) throw new Error('案例背景题创建失败');
+            const caseData = await res.json();
+            const caseId = caseData.id;
+            // 再保存子题，带 parent_case_id
+            const createdIds: number[] = [];
+            for (const q of questions) {
+                const resp = await fetch('http://localhost:8000/questions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ...q,
+                        content: `[案例子题] ${q.content}`,
+                        type: q.type,
+                        options: q.options,
+                        scores: q.scores,
+                        shuffle_options: q.shuffle_options || false,
+                        parent_case_id: caseId
+                    })
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    createdIds.push(data.id);
+                }
+            }
+            // 批量添加到试卷：包括案例背景题和所有子题
+            const allIds = [caseId, ...createdIds];
+            if (allIds.length > 0) {
+                const questionsData = allIds.map(id => ({ question_id: id, dimension_id: null }));
+                await fetch(`http://localhost:8000/papers/${currentPaperId}/questions/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(questionsData)
+                });
+            }
+            message.success('案例背景题添加成功');
+            setCaseModalVisible(false);
+            await fetchPaperQuestions(currentPaperId);
+        } catch (e) {
+            message.error('添加失败');
+        }
+    };
+
+    // 在 PaperManagement 组件内部添加
+    const handleRemovePaperQuestion = async (questionId: number) => {
+        if (!currentPaperId) return;
+        try {
+            const response = await fetch(`http://localhost:8000/papers/${currentPaperId}/questions/`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question_ids: [questionId] }),
+            });
+            if (response.ok) {
+                message.success('题目已移除');
+                await fetchPaperQuestions(currentPaperId);
+            } else {
+                const errorData = await response.json();
+                message.error(errorData.detail || '移除失败');
+            }
+        } catch (error) {
+            message.error('网络错误');
+        }
+    };
+
+    // 撤销单个分配
+    const handleRevokeAssignment = async (paperId: number, assignmentId: number) => {
+        try {
+            const response = await fetch(`http://localhost:8000/papers/${paperId}/assignment/${assignmentId}`, {
+                method: 'DELETE',
+            });
+            if (response.ok) {
+                message.success('撤销分配成功');
+                fetchPaperAssignments(paperId);
+            } else {
+                const errorData = await response.json();
+                message.error(errorData.detail || '撤销分配失败');
+            }
+        } catch (error) {
+            message.error('网络错误');
+        }
+    };
+    // 撤销全部分配
+    const handleRevokeAllAssignments = async (paperId: number) => {
+        try {
+            const response = await fetch(`http://localhost:8000/papers/${paperId}/assignments`, {
+                method: 'DELETE',
+            });
+            if (response.ok) {
+                message.success('已撤销全部分配');
+                fetchPaperAssignments(paperId);
+            } else {
+                const errorData = await response.json();
+                message.error(errorData.detail || '撤销全部分配失败');
+            }
+        } catch (error) {
+            message.error('网络错误');
+        }
+    };
+
     return (
         <div style={{ padding: '24px' }}>
             <Card title="试卷管理" extra={
@@ -1103,28 +1351,10 @@ const PaperManagement: React.FC = () => {
                                         </Tag>
                                     )}
                                 </div>
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                    {paperQuestions.length > 0 && currentPaperId && (
-                                        <Button
-                                            type={shuffleStatus?.is_shuffled ? 'default' : 'primary'}
-                                            icon={<ReloadOutlined />}
-                                            loading={shuffleLoading}
-                                            onClick={() => toggleShuffle(currentPaperId, !shuffleStatus?.is_shuffled)}
-                                        >
-                                            {shuffleStatus?.is_shuffled ? '禁用乱序' : '启用乱序'}
-                                        </Button>
-                                    )}
-                                    {selectedPaperQuestions.length > 0 && (
-                                        <Button
-                                            type="primary"
-                                            danger
-                                            onClick={handleDeletePaperQuestions}
-                                            icon={<DeleteOutlined />}
-                                        >
-                                            删除选中题目 ({selectedPaperQuestions.length})
-                                        </Button>
-                                    )}
-                                </div>
+                                <Space>
+                                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setQuestionModalMode('add')}>添加题目</Button>
+                                    <Button type="dashed" onClick={handleAddCase}>添加案例背景题</Button>
+                                </Space>
                             </div>
                             {paperQuestions.length === 0 ? (
                                 <Empty description="暂无题目" />
@@ -1186,6 +1416,14 @@ const PaperManagement: React.FC = () => {
                                                         >
                                                             编辑
                                                         </Button>
+                                                        <Button
+                                                            type="link"
+                                                            size="small"
+                                                            icon={<DeleteOutlined />}
+                                                            onClick={() => handleRemovePaperQuestion(item.id)}
+                                                        >
+                                                            移除
+                                                        </Button>
                                                     </div>
                                                 </div>
                                             </List.Item>
@@ -1221,6 +1459,18 @@ const PaperManagement: React.FC = () => {
                                 >
                                     <Button loading={importLoading}>
                                         从Word文档导入
+                                    </Button>
+                                </Upload>
+                                <Upload
+                                    accept=".xlsx,.xls"
+                                    showUploadList={false}
+                                    beforeUpload={(file) => {
+                                        handleImportFromExcel(file);
+                                        return false;
+                                    }}
+                                >
+                                    <Button icon={<UploadOutlined />} loading={excelImportLoading}>
+                                        从Excel导入
                                     </Button>
                                 </Upload>
                             </Space>
@@ -1677,6 +1927,11 @@ const PaperManagement: React.FC = () => {
                     }}>
                         关闭
                     </Button>,
+                    ...(currentPaperForAssignment && assignments.length > 0 ? [
+                        <Button key="revokeAll" danger onClick={() => handleRevokeAllAssignments(currentPaperForAssignment)}>
+                            撤销全部分配
+                        </Button>
+                    ] : [])
                 ]}
                 width={800}
             >
@@ -1718,7 +1973,14 @@ const PaperManagement: React.FC = () => {
                                             >
                                                 重新分配
                                             </Button>
-                                        )
+                                        ),
+                                        <Button
+                                            size="small"
+                                            danger
+                                            onClick={() => handleRevokeAssignment(currentPaperForAssignment!, assignment.id)}
+                                        >
+                                            撤销分配
+                                        </Button>
                                     ]}
                                 >
                                     <div style={{ width: '100%' }}>
@@ -1997,6 +2259,158 @@ const PaperManagement: React.FC = () => {
                         )}
                     />
                 </div>
+            </Modal>
+
+            {/* 导入Excel题目预览模态框 */}
+            <Modal
+                title="导入Excel题目预览"
+                open={excelImportModalVisible}
+                onCancel={() => {
+                    setExcelImportModalVisible(false);
+                    setExcelImportedQuestions([]);
+                    setExcelImportFile(null);
+                }}
+                footer={[
+                    <Button key="cancel" onClick={() => {
+                        setExcelImportModalVisible(false);
+                        setExcelImportedQuestions([]);
+                        setExcelImportFile(null);
+                    }}>
+                        取消
+                    </Button>,
+                    <Button key="confirm" type="primary" onClick={handleConfirmImportExcel} loading={excelImportLoading}>
+                        确认导入 ({excelImportedQuestions.length} 道题目)
+                    </Button>,
+                ]}
+                width={800}
+            >
+                <div>
+                    <List
+                        dataSource={excelImportedQuestions}
+                        renderItem={(item, index) => (
+                            <List.Item
+                                actions={[
+                                    <Button
+                                        type="link"
+                                        icon={<EditOutlined />}
+                                        onClick={() => {
+                                            setEditingQuestion({ ...item, _excelIndex: index });
+                                            editQuestionForm.setFieldsValue({
+                                                content: item.content,
+                                                type: item.type,
+                                                shuffle_options: item.shuffle_options,
+                                                options: item.options,
+                                                scores: item.scores,
+                                            });
+                                            setEditQuestionModalVisible(true);
+                                        }}
+                                    >编辑</Button>
+                                ]}
+                            >
+                                <div>
+                                    <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
+                                        题目{index + 1}: {item.content}
+                                    </div>
+                                    <div style={{ color: '#666', fontSize: '12px' }}>
+                                        类型: {item.type} | 选项乱序: {item.shuffle_options ? '是' : '否'} | 选项数: {item.options?.length || 0}
+                                    </div>
+                                    <div style={{ marginTop: 4 }}>
+                                        {item.options && item.options.map((opt: string, idx: number) => (
+                                            <div key={idx}>
+                                                {String.fromCharCode(65 + idx)}. {opt} <span style={{ color: '#999', marginLeft: 8 }}>分数: {item.scores && item.scores[idx]}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </List.Item>
+                        )}
+                    />
+                </div>
+            </Modal>
+
+            {/* 案例背景题弹窗 */}
+            <Modal
+                title="添加案例背景题"
+                open={caseModalVisible}
+                onOk={handleCaseModalOk}
+                onCancel={() => setCaseModalVisible(false)}
+                width={900}
+                okText="提交全部"
+            >
+                <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontWeight: 600, marginBottom: 8 }}>案例背景（<span style={{ color: '#faad14' }}>若有表格，请插入（）图片</span>）：</div>
+                    <ReactQuill value={caseBackground} onChange={setCaseBackground} theme="snow" modules={quillModules} style={{ minHeight: 120 }} />
+                </div>
+                <Form form={caseForm} layout="vertical">
+                    <Form.List name="questions" initialValue={caseQuestions}>
+                        {(fields, { add, remove }) => (
+                            <>
+                                {fields.map((field, qidx) => (
+                                    <Card key={field.key} style={{ marginBottom: 16 }} title={`子题${qidx + 1}`}
+                                        extra={fields.length > 1 ? <MinusCircleOutlined onClick={() => remove(field.name)} /> : null}>
+                                        <Form.Item
+                                            {...field}
+                                            name={[field.name, 'content']}
+                                            label="题目内容"
+                                            rules={[{ required: true, message: '请输入题目内容' }]}
+                                        >
+                                            <TextArea rows={2} />
+                                        </Form.Item>
+                                        <Form.Item
+                                            {...field}
+                                            name={[field.name, 'type']}
+                                            label="题型"
+                                            rules={[{ required: true, message: '请选择题型' }]}
+                                        >
+                                            <Select style={{ width: 200 }}>
+                                                <Option value="single">单选题</Option>
+                                                <Option value="multiple">多选题</Option>
+                                                <Option value="indefinite">不定项选择题</Option>
+                                            </Select>
+                                        </Form.Item>
+                                        <Form.Item
+                                            {...field}
+                                            name={[field.name, 'shuffle_options']}
+                                            label="选项乱序"
+                                            valuePropName="checked"
+                                        >
+                                            <Checkbox>启用选项乱序</Checkbox>
+                                        </Form.Item>
+                                        <Form.List name={[field.name, 'options']} initialValue={[{ value: '', score: 0 }, { value: '', score: 0 }, { value: '', score: 0 }, { value: '', score: 0 }]}>
+                                            {(optFields, { add: addOpt, remove: removeOpt }) => (
+                                                <>
+                                                    {optFields.map((opt, idx) => (
+                                                        <Space key={opt.key} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
+                                                            <Form.Item
+                                                                {...opt}
+                                                                name={[opt.name, 'value']}
+                                                                rules={[{ required: true, message: '请输入选项内容' }]}
+                                                            >
+                                                                <Input placeholder={`选项${String.fromCharCode(65 + idx)}`} style={{ width: 200 }} />
+                                                            </Form.Item>
+                                                            <Form.Item
+                                                                {...opt}
+                                                                name={[opt.name, 'score']}
+                                                                rules={[{ required: true, message: '请输入分数' }]}
+                                                            >
+                                                                <Input type="number" placeholder="分数" style={{ width: 80 }} />
+                                                            </Form.Item>
+                                                            {optFields.length > 2 && (
+                                                                <MinusCircleOutlined onClick={() => removeOpt(opt.name)} />
+                                                            )}
+                                                        </Space>
+                                                    ))}
+                                                    <Button type="dashed" onClick={() => addOpt({ value: '', score: 0 })} block icon={<PlusOutlined />}>添加选项</Button>
+                                                </>
+                                            )}
+                                        </Form.List>
+                                    </Card>
+                                ))}
+                                <Button type="dashed" onClick={() => add({ content: '', type: 'single', options: [{ value: '', score: 0 }, { value: '', score: 0 }, { value: '', score: 0 }, { value: '', score: 0 }], scores: [10, 7, 4, 1], shuffle_options: false })} block icon={<PlusOutlined />}>添加更多子题</Button>
+                            </>
+                        )}
+                    </Form.List>
+                </Form>
             </Modal>
         </div>
     );

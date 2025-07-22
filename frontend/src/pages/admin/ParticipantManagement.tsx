@@ -12,7 +12,9 @@ import {
     Card,
     Switch,
     Upload,
-    Alert
+    Alert,
+    AutoComplete,
+    InputNumber
 } from 'antd';
 import {
     PlusOutlined,
@@ -42,11 +44,162 @@ const ParticipantManagement: React.FC = () => {
     const [importLoading, setImportLoading] = useState(false);
     const [importResult, setImportResult] = useState<any>(null);
 
-    // 获取被试者列表
-    const fetchParticipants = async () => {
+    // 岗位列表（可根据实际岗位补充）
+    const positionOptions = [
+        '生产力促进部副总监',
+        '经营管理主管',
+        '副总裁兼广州分公司总经理',
+        '董事长兼总裁',
+        '咨询师',
+        '招采项目经理',
+        '见习咨询师',
+        '数字化总监',
+        '项目主管',
+        '项目经理',
+        '项目专员',
+        '法务经理',
+        '管培生',
+        '审计专员',
+        '财务主管',
+        '运作支持主管',
+        '新咨询发展研究院执行院长',
+        '研发赋能专员',
+        '法务专员',
+        '双碳项目区域负责人',
+        '组织发展主管',
+        '法务主管',
+        '数字化主管',
+        '研发赋能主管',
+        '总经理助理',
+        '合约专员',
+        '会计主管',
+        '合约主管',
+        '询价副经理',
+        '品牌专员',
+        'IT主管',
+        '制度流程主管',
+        '品牌经理',
+        '招聘专员',
+        '档案管理员',
+        '会计',
+        '办公室主任',
+        'IT专员',
+        '品牌主管',
+        '薪酬绩效主管',
+        '综合事务专员',
+        '询价专员',
+        '合同专员',
+        '综合事务主管',
+        '人力资源主管',
+        '招聘主管',
+        '培训主管',
+        '文员',
+        '司机',
+        '资料员',
+        '项目资料员',
+        '行政专员',
+        '行政主管',
+        '人力资源部总监',
+        '人力行政部经理',
+        '人力资源专员',
+        '人力行政主管',
+        '人力资源部经理',
+        '出纳',
+        '财务经理',
+        '财务专员',
+        '保洁',
+        '人力行政专员',
+        '人力资源副经理',
+        '市场部经理',
+        '投标专员',
+        '投标主管',
+        '助理客户经理',
+        '高级客户经理',
+        '客户经理',
+        '商务主管',
+        '商务经理',
+        '商务专员',
+        '市场合约部经理',
+        '质控专员',
+        '质控副主任兼造价纠纷与法律服务部经理',
+        '总工程师兼质控主任',
+        '质控主任',
+        '质控副主任',
+        '质控主管',
+        '部门主管',
+        'BIM项目经理',
+        'BIM工程师',
+        '招采专员',
+        '招采主管',
+        '招采业务部经理',
+        '高级造价主管',
+        '造价纠纷调解经理',
+        '鉴定经理',
+        '副经理',
+        '经理',
+        '部门经理',
+        '造价业务部经理',
+        '实习生',
+        '鉴定主管',
+        '鉴定专员',
+        '专业经理',
+        '造价员',
+        '造价主管',
+        '数字化与AI创新总监',
+        '承包商事业部总监',
+        '副总裁兼政企决策与前期咨询事业中心总经理',
+        '副总裁兼市场与营销中心总经理',
+        '营销中心副总经理兼海南分公司营销负责人',
+        '新咨询发展研究院副院长',
+        '数字化事业部总监',
+        '生产力促进中心副总监',
+        '政企决策与前期咨询事业中心副总监',
+        '技术总监',
+        '（储备）副总经理',
+        '成本顾问中心总经理',
+        '副总裁',
+        '全过程工程咨询事业部副总监',
+        '数字化专业技术委员会主任',
+        '东莞分公司总经理兼广州分公司常务副总经理',
+        '人力资源部副总监',
+        '造价纠纷与法律服务中心副总监',
+        '副总经理兼东莞分公司常务副总经理（兼质控主任）',
+        '常务副总经理',
+        '商务总经理',
+        '市场部总监',
+        '法律咨询业务部总监',
+        '造价纠纷与法律服务中心总经理',
+        '运营管理中心总经理',
+        '造价纠纷业务部总监',
+        '政府决策与前期咨询事业中心总经理',
+        '运营管理中心副总经理',
+        '总监',
+        '副总经理',
+        '总经理',
+        '总裁',
+        '董事长',
+        '常务副总裁',
+        '副董事长',
+        '城市公司发展和管理部副总监',
+        '总工程师',
+        '财务部总监',
+    ]
+
+    const [filterForm] = Form.useForm();
+
+    // 获取被试者列表，支持筛选
+    const fetchParticipants = async (filters?: any) => {
         setLoading(true);
         try {
-            const response = await fetch('/api/participants');
+            let url = '/api/participants';
+            if (filters) {
+                const params = [];
+                if (filters.position) params.push(`position=${encodeURIComponent(filters.position)}`);
+                if (filters.age_min !== undefined && filters.age_min !== null) params.push(`age_min=${filters.age_min}`);
+                if (filters.age_max !== undefined && filters.age_max !== null) params.push(`age_max=${filters.age_max}`);
+                if (params.length > 0) url += '?' + params.join('&');
+            }
+            const response = await fetch(url);
             if (response.ok) {
                 const data = await response.json();
                 setParticipants(data);
@@ -59,10 +212,6 @@ const ParticipantManagement: React.FC = () => {
             setLoading(false);
         }
     };
-
-    useEffect(() => {
-        fetchParticipants();
-    }, []);
 
     // 创建或更新被试者
     const handleSubmit = async (values: any) => {
@@ -192,6 +341,15 @@ const ParticipantManagement: React.FC = () => {
         document.body.removeChild(link);
     };
 
+    // 筛选表单提交
+    const handleFilter = (values: any) => {
+        fetchParticipants(values);
+    };
+
+    useEffect(() => {
+        fetchParticipants();
+    }, []);
+
     const columns = [
         {
             title: '用户名',
@@ -306,6 +464,37 @@ const ParticipantManagement: React.FC = () => {
                     </Button>
                 </Space>
             }>
+                {/* 新增：筛选表单 */}
+                <Form
+                    form={filterForm}
+                    layout="inline"
+                    onFinish={handleFilter}
+                    style={{ marginBottom: 16 }}
+                >
+                    <Form.Item label="岗位" name="position">
+                        <AutoComplete
+                            options={positionOptions.map(pos => ({ value: pos }))}
+                            placeholder="请输入或选择岗位"
+                            filterOption={(inputValue, option) =>
+                                option!.value.toLowerCase().indexOf(inputValue.toLowerCase()) !== -1
+                            }
+                            allowClear
+                            style={{ width: 180 }}
+                        />
+                    </Form.Item>
+                    <Form.Item label="年龄" name="age_min">
+                        <InputNumber min={0} max={120} placeholder="最小年龄" style={{ width: 100 }} />
+                    </Form.Item>
+                    <Form.Item label="-" colon={false} name="age_max">
+                        <InputNumber min={0} max={120} placeholder="最大年龄" style={{ width: 100 }} />
+                    </Form.Item>
+                    <Form.Item>
+                        <Button type="primary" htmlType="submit">筛选</Button>
+                    </Form.Item>
+                    <Form.Item>
+                        <Button onClick={() => { filterForm.resetFields(); fetchParticipants(); }}>重置</Button>
+                    </Form.Item>
+                </Form>
                 {/* 导入结果提示 */}
                 {importResult && (
                     <Alert
