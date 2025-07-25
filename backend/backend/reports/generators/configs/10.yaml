@@ -1,0 +1,273 @@
+name: '11'
+paper_id: 10
+title: '111'
+introduction: '1'
+score_levels:
+  - name: 高潜力
+    min: 8.5
+    max: 10
+    summary: '1'
+    development_focus: '1'
+    color: '#4CAF50'
+  - name: 中高潜力
+    min: 7.5
+    max: 8.4
+    summary: '1'
+    development_focus: '1'
+    color: '#FFC107'
+  - name: 中等潜力
+    min: 6.5
+    max: 7.4
+    summary: '1'
+    development_focus: '1'
+    color: '#3498db'
+  - name: 基础潜力
+    min: 1
+    max: 6.4
+    summary: '1'
+    development_focus: '1'
+    color: '#F44336'
+conclusion: '1'
+dimensions:
+  '14':
+    color: '#1890ff'
+    description: '1'
+    sub_dimensions:
+      '15':
+        description: '1'
+      '16':
+        description: '1'
+      '17':
+        description: '1'
+  '18':
+    color: '#52c41a'
+    description: '1'
+    sub_dimensions:
+      '21':
+        description: '1'
+      '22':
+        description: '1'
+      '23':
+        description: '1'
+  '19':
+    color: '#fa8c16'
+    description: '1'
+    sub_dimensions:
+      '24':
+        description: '1'
+      '25':
+        description: '1'
+      '26':
+        description: '1'
+  '20':
+    color: '#722ed1'
+    description: '1'
+    sub_dimensions:
+      '27':
+        description: '1'
+      '28':
+        description: '1'
+      '29':
+        description: '1'
+dimension_evaluations:
+  自我成长与发展:
+    high:
+      dimension_eval: '1'
+      sub_dimensions:
+        学习与探索动机:
+          potentials: '1'
+          behaviors: '1'
+        寻求和运用反馈:
+          potentials: '1'
+          behaviors: '1'
+        情感成熟度:
+          potentials: '1'
+          behaviors: '1'
+    medium:
+      dimension_eval: '1'
+      sub_dimensions:
+        学习与探索动机:
+          potentials: '1'
+          behaviors: '1'
+        寻求和运用反馈:
+          potentials: '1'
+          behaviors: '111'
+        情感成熟度:
+          potentials: '1'
+          behaviors: '11'
+    low:
+      dimension_eval: '1'
+      sub_dimensions:
+        学习与探索动机:
+          potentials: '1'
+          behaviors: '1'
+        寻求和运用反馈:
+          potentials: '1'
+          behaviors: '1'
+        情感成熟度:
+          potentials: '1'
+          behaviors: '111'
+    bad:
+      dimension_eval: '111'
+      sub_dimensions:
+        学习与探索动机:
+          potentials: '1'
+          behaviors: '1'
+        寻求和运用反馈:
+          potentials: '1'
+          behaviors: '1'
+        情感成熟度:
+          potentials: '1'
+          behaviors: '1'
+  管理动力:
+    high:
+      dimension_eval: '1'
+      sub_dimensions:
+        领导意愿:
+          potentials: '1'
+          behaviors: '1'
+        追求成就:
+          potentials: '1'
+          behaviors: '1'
+        组织意识:
+          potentials: '1'
+          behaviors: '1'
+    medium:
+      dimension_eval: '1'
+      sub_dimensions:
+        领导意愿:
+          potentials: '11'
+          behaviors: '1'
+        追求成就:
+          potentials: '1'
+          behaviors: '1'
+        组织意识:
+          potentials: '1'
+          behaviors: '1'
+    low:
+      dimension_eval: '1'
+      sub_dimensions:
+        领导意愿:
+          potentials: '1'
+          behaviors: '1'
+        追求成就:
+          potentials: '1'
+          behaviors: '1'
+        组织意识:
+          potentials: '1'
+          behaviors: '1'
+    bad:
+      dimension_eval: '1'
+      sub_dimensions:
+        领导意愿:
+          potentials: '1'
+          behaviors: '1'
+        追求成就:
+          potentials: '1'
+          behaviors: '1'
+        组织意识:
+          potentials: '1'
+          behaviors: '1'
+  管理他人:
+    high:
+      dimension_eval: '1'
+      sub_dimensions:
+        人际洞察:
+          potentials: '1'
+          behaviors: '1'
+        同理心:
+          potentials: '1'
+          behaviors: '1'
+        发挥他人:
+          potentials: '1'
+          behaviors: '1'
+    medium:
+      dimension_eval: '1'
+      sub_dimensions:
+        人际洞察:
+          potentials: '1'
+          behaviors: '1'
+        同理心:
+          potentials: '1'
+          behaviors: '1'
+        发挥他人:
+          potentials: '1'
+          behaviors: '1'
+    low:
+      dimension_eval: '1'
+      sub_dimensions:
+        人际洞察:
+          potentials: '1'
+          behaviors: '1'
+        同理心:
+          potentials: '1'
+          behaviors: '1'
+        发挥他人:
+          potentials: '1'
+          behaviors: '1'
+    bad:
+      dimension_eval: '1'
+      sub_dimensions:
+        人际洞察:
+          potentials: '1'
+          behaviors: '1'
+        同理心:
+          potentials: '1'
+          behaviors: '1'
+        发挥他人:
+          potentials: '1'
+          behaviors: '1'
+  管理事务:
+    high:
+      dimension_eval: '1'
+      sub_dimensions:
+        跨领域思考:
+          potentials: '1'
+          behaviors: '1'
+        概念性思维:
+          potentials: '1'
+          behaviors: '1'
+        适应变化情境:
+          potentials: '1'
+          behaviors: '1'
+    medium:
+      dimension_eval: '1'
+      sub_dimensions:
+        跨领域思考:
+          potentials: '1'
+          behaviors: '1'
+        概念性思维:
+          potentials: '1'
+          behaviors: '1'
+        适应变化情境:
+          potentials: '1'
+          behaviors: '1'
+    low:
+      dimension_eval: '1'
+      sub_dimensions:
+        跨领域思考:
+          potentials: '1'
+          behaviors: '1'
+        概念性思维:
+          potentials: '1'
+          behaviors: '1'
+        适应变化情境:
+          potentials: '1'
+          behaviors: '1'
+    bad:
+      dimension_eval: '1'
+      sub_dimensions:
+        跨领域思考:
+          potentials: '1'
+          behaviors: '1'
+        概念性思维:
+          potentials: '1'
+          behaviors: '1'
+        适应变化情境:
+          potentials: '1'
+          behaviors: '11'
+template:
+  name: report_template.html
+  title: '111'
+  description: '1'
+charts: []

@@ -23,6 +23,7 @@ import {
     UploadOutlined,
     DownloadOutlined
 } from '@ant-design/icons';
+import { apiService } from '../../utils/api';
 
 interface Participant {
     id: number;
@@ -191,21 +192,14 @@ const ParticipantManagement: React.FC = () => {
     const fetchParticipants = async (filters?: any) => {
         setLoading(true);
         try {
-            let url = '/api/participants';
+            const params: any = {};
             if (filters) {
-                const params = [];
-                if (filters.position) params.push(`position=${encodeURIComponent(filters.position)}`);
-                if (filters.age_min !== undefined && filters.age_min !== null) params.push(`age_min=${filters.age_min}`);
-                if (filters.age_max !== undefined && filters.age_max !== null) params.push(`age_max=${filters.age_max}`);
-                if (params.length > 0) url += '?' + params.join('&');
+                if (filters.position) params.position = filters.position;
+                if (filters.age_min !== undefined && filters.age_min !== null) params.age_min = filters.age_min;
+                if (filters.age_max !== undefined && filters.age_max !== null) params.age_max = filters.age_max;
             }
-            const response = await fetch(url);
-            if (response.ok) {
-                const data = await response.json();
-                setParticipants(data);
-            } else {
-                message.error('获取被试者列表失败');
-            }
+            const data = await apiService.getList('/participants', params);
+            setParticipants(data);
         } catch (error) {
             message.error('网络错误');
         } finally {
@@ -218,37 +212,19 @@ const ParticipantManagement: React.FC = () => {
         try {
             if (editingParticipant) {
                 // 更新被试者
-                const response = await fetch(`/api/participants/${editingParticipant.id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(values),
-                });
-                if (response.ok) {
-                    message.success('被试者更新成功');
-                    setModalVisible(false);
-                    setEditingParticipant(null);
-                    form.resetFields();
-                    fetchParticipants();
-                } else {
-                    const errorData = await response.json();
-                    message.error(errorData.detail || '更新失败');
-                }
+                await apiService.update('/participants', editingParticipant.id, values);
+                message.success('被试者更新成功');
+                setModalVisible(false);
+                setEditingParticipant(null);
+                form.resetFields();
+                fetchParticipants();
             } else {
                 // 创建被试者
-                const response = await fetch('/api/participants', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(values),
-                });
-                if (response.ok) {
-                    message.success('被试者创建成功');
-                    setModalVisible(false);
-                    form.resetFields();
-                    fetchParticipants();
-                } else {
-                    const errorData = await response.json();
-                    message.error(errorData.detail || '创建失败');
-                }
+                await apiService.create('/participants', values);
+                message.success('被试者创建成功');
+                setModalVisible(false);
+                form.resetFields();
+                fetchParticipants();
             }
         } catch (error) {
             message.error('网络错误');
@@ -258,15 +234,9 @@ const ParticipantManagement: React.FC = () => {
     // 删除被试者
     const handleDelete = async (id: number) => {
         try {
-            const response = await fetch(`/api/participants/${id}`, {
-                method: 'DELETE',
-            });
-            if (response.ok) {
-                message.success('删除成功');
-                fetchParticipants();
-            } else {
-                message.error('删除失败');
-            }
+            await apiService.delete('/participants', id);
+            message.success('删除成功');
+            fetchParticipants();
         } catch (error) {
             message.error('网络错误');
         }

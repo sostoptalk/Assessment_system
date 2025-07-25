@@ -3,6 +3,7 @@ import { Form, Input, Button, Card, message } from 'antd'
 import { UserOutlined, LockOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
+import api from '../utils/api'  // 导入API工具，以便将来使用
 
 interface LoginForm {
     username: string
@@ -20,14 +21,15 @@ const Login = () => {
             formData.append('username', values.username)
             formData.append('password', values.password)
 
-            const response = await axios.post('/api/login', formData)
+            // 使用正确的路径/login，不带/api前缀
+            const response = await axios.post('/login', formData)
             const { access_token } = response.data
 
             // 保存token到localStorage
             localStorage.setItem('token', access_token)
 
-            // 用token获取用户信息
-            const meRes = await axios.get('/api/me/', {
+            // 用token获取用户信息，使用正确的路径/me/
+            const meRes = await axios.get('/me/', {
                 headers: {
                     Authorization: `Bearer ${access_token}`
                 }
@@ -44,6 +46,7 @@ const Login = () => {
                 navigate('/participant')
             }
         } catch (error) {
+            console.error('登录失败:', error);
             message.error('登录失败，请检查用户名和密码')
         } finally {
             setLoading(false)
@@ -82,8 +85,8 @@ const Login = () => {
                         alignItems: 'center'
                     }}>
                         {/* 修正logo路径 */}
-                        <img 
-                            src="/logo.png" 
+                        <img
+                            src="/logo.png"
                             alt="中量工程咨询有限公司"
                             style={{
                                 width: '80px',
@@ -104,7 +107,7 @@ const Login = () => {
                         }}>人才测评系统</p>
                     </div>
                 }
-                style={{ 
+                style={{
                     width: 400,
                     textAlign: 'center',
                     zIndex: 1,

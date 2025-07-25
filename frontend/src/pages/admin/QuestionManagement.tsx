@@ -1,37 +1,32 @@
 import { useState, useEffect } from 'react'
-import { Card, Button, Table, Modal, Form, Input, Select, message, Space, Tag, Popconfirm, Upload, Spin, Checkbox } from 'antd'
+import { Card, Button, Table, Modal, Form, Input, Select, message, Space, Tag, Popconfirm, Upload, Spin, Checkbox, List } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, MinusCircleOutlined, DownloadOutlined } from '@ant-design/icons'
 import axios from 'axios'
-import ReactQuill from 'react-quill'
+import RichTextEditor from '../../components/RichTextEditor'
+import QuestionContentDisplay from '../../components/QuestionContentDisplay'
 import 'react-quill/dist/quill.snow.css'
+import { apiService } from '../../utils/api'
 
 const { Option } = Select
 const { TextArea } = Input
 
+// 修改Question接口，添加parent_case_id和子题字段
 interface Question {
     id?: number
     content: string
-    type: 'single' | 'multiple' | 'indefinite'
+    type: 'single' | 'multiple' | 'indefinite' | 'case'
     options: string[]
     scores: number[]
     shuffle_options?: boolean
+    parent_case_id?: number
+    children?: Question[]  // 添加子题字段
     created_at?: string
     updated_at?: string
 }
 
 const defaultOption = () => ({ value: '', score: 0 })
 
-// Quill 编辑器配置，增强表格粘贴体验
-const quillModules = {
-    toolbar: [
-        [{ 'header': [1, 2, 3, false] }],
-        ['bold', 'italic', 'underline', 'strike'],
-        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-        ['blockquote', 'code-block'],
-        ['link', 'image'],
-        ['clean'],
-    ]
-}
+// 编辑器配置已移至 RichTextEditor 组件
 
 const QuestionManagement = () => {
     const [questions, setQuestions] = useState<Question[]>([])
@@ -57,10 +52,34 @@ const QuestionManagement = () => {
     const fetchQuestions = async () => {
         setLoading(true)
         try {
-            const res = await axios.get('/api/questions/', {
-                headers: { Authorization: `Bearer ${token}` }
+            const res = await apiService.getList('/questions/')
+
+            // 组织案例背景题和子题的关系
+            const allQuestions = res  // apiService.getList 已经返回 data 部分
+            const caseMap = new Map() // 存储案例背景题ID到题目对象的映射
+            const regularQuestions: Question[] = [] // 存储非子题的普通题目
+
+            // 第一遍遍历，找出所有案例背景题和普通题
+            allQuestions.forEach((q: Question) => {
+                if (q.type === 'case') {
+                    q.children = [] // 初始化子题数组
+                    caseMap.set(q.id, q)
+                } else if (!q.parent_case_id) {
+                    regularQuestions.push(q)
+                }
             })
-            setQuestions(res.data)
+
+            // 第二遍遍历，将子题添加到对应的案例背景题中
+            allQuestions.forEach((q: Question) => {
+                if (q.parent_case_id && caseMap.has(q.parent_case_id)) {
+                    const parent = caseMap.get(q.parent_case_id)
+                    parent.children!.push(q)
+                }
+            })
+
+            // 合并案例背景题和普通题
+            const result = [...caseMap.values(), ...regularQuestions]
+            setQuestions(result)
         } catch (e) {
             message.error('获取题库失败')
         } finally {
@@ -83,7 +102,7 @@ const QuestionManagement = () => {
             dataIndex: 'content',
             key: 'content',
             width: '40%',
-            render: (text: string) => <div style={{ maxWidth: 300 }}>{text}</div>
+            render: (text: string) => <QuestionContentDisplay content={text} maxLength={100} />
         },
         {
             title: '题型',
@@ -160,14 +179,20 @@ const QuestionManagement = () => {
     }
 
     const handleEdit = (question: Question) => {
-        setEditingQuestion(question)
-        form.setFieldsValue({
-            content: question.content,
-            type: question.type,
-            shuffle_options: question.shuffle_options || false,
-            options: question.options.map((v, i) => ({ value: v, score: question.scores[i] ?? 0 }))
-        })
-        setModalVisible(true)
+        // First reset the form to clear any previous state
+        form.resetFields();
+        // Then set the editing question
+        setEditingQuestion(question);
+        // Then set form values
+        setTimeout(() => {
+            form.setFieldsValue({
+                content: question.content,
+                type: question.type,
+                shuffle_options: question.shuffle_options || false,
+                options: question.options.map((v, i) => ({ value: v, score: question.scores[i] ?? 0 }))
+            });
+            setModalVisible(true);
+        }, 0);
     }
 
     // 新增或编辑题目
@@ -188,14 +213,10 @@ const QuestionManagement = () => {
                 shuffle_options: values.shuffle_options || false
             }
             if (editingQuestion) {
-                await axios.put(`/api/questions/${editingQuestion.id}`, payload, {
-                    headers: { Authorization: `Bearer ${token}` }
-                })
+                await apiService.update('/questions', editingQuestion.id, payload)
                 message.success('编辑成功')
             } else {
-                await axios.post('/api/questions/', payload, {
-                    headers: { Authorization: `Bearer ${token}` }
-                })
+                await apiService.create('/questions/', payload)
                 message.success('添加成功')
             }
             setModalVisible(false)
@@ -203,10 +224,11 @@ const QuestionManagement = () => {
         } catch (e: any) {
             if (e && e.errorFields) {
                 // 表单校验错误，AntD会自动高亮
-            } else if (e && e.response && e.response.data && e.response.data.detail) {
-                message.error('后端错误: ' + e.response.data.detail)
+            } else if (e && e.detail) {
+                message.error('后端错误: ' + e.detail)
             } else {
                 message.error('操作失败，请检查网络或输入')
+                console.error('操作失败详情:', e)
             }
         }
     }
@@ -220,14 +242,14 @@ const QuestionManagement = () => {
                 return
             }
             // 先保存案例背景题（主表）
-            const res = await axios.post('/api/questions/', {
+            const res = await apiService.create('/questions/', {
                 content: caseBackground,
                 type: 'case',
                 options: [],
                 scores: [],
                 shuffle_options: false
-            }, { headers: { Authorization: `Bearer ${token}` } })
-            const caseId = res.data.id
+            })
+            const caseId = res.id
             // 组装payload
             const questions = values.questions.map((q: any) => ({
                 ...q,
@@ -237,9 +259,7 @@ const QuestionManagement = () => {
             }))
             // 再保存子题
             for (const q of questions) {
-                await axios.post('/api/questions/', q, {
-                    headers: { Authorization: `Bearer ${token}` }
-                })
+                await apiService.create('/questions/', q)
             }
             message.success('案例背景题添加成功')
             setCaseModalVisible(false)
@@ -252,16 +272,33 @@ const QuestionManagement = () => {
     // 删除题目
     const handleDelete = async (id: number) => {
         try {
-            await axios.delete(`/api/questions/${id}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            })
-            message.success('删除成功')
-            fetchQuestions()
+            // 查找当前要删除的题目
+            const questionToDelete = questions.find(q => q.id === id)
+
+            // 如果是案例背景题，提示用户会同时删除所有子题
+            if (questionToDelete && questionToDelete.type === 'case' && questionToDelete.children && questionToDelete.children.length > 0) {
+                Modal.confirm({
+                    title: '确认删除',
+                    content: `该题为案例背景题，包含 ${questionToDelete.children.length} 个子题，删除后将同时删除所有子题，是否继续？`,
+                    okText: '确认',
+                    cancelText: '取消',
+                    onOk: async () => {
+                        await apiService.delete('/questions', id)
+                        message.success('删除成功')
+                        fetchQuestions()
+                    }
+                })
+            } else {
+                await apiService.delete('/questions', id)
+                message.success('删除成功')
+                fetchQuestions()
+            }
         } catch (e: any) {
-            if (e && e.response && e.response.data && e.response.data.detail) {
-                message.error(e.response.data.detail)
+            if (e && e.detail) {
+                message.error(e.detail)
             } else {
                 message.error('删除失败')
+                console.error('删除失败详情:', e)
             }
         }
     }
@@ -272,10 +309,10 @@ const QuestionManagement = () => {
         const formData = new FormData()
         formData.append('file', file)
         try {
-            const res = await axios.post('/api/questions/import_word', formData, {
+            const res = await axios.post('/questions/import_word', formData, {
                 headers: { Authorization: `Bearer ${token}` }
             })
-            const wordQuestions = res.data.questions.map((q: any) => ({
+            const wordQuestions = res.questions.map((q: any) => ({
                 content: q.content,
                 type: q.type,
                 options: q.options.map((v: string, i: number) => ({ value: v, score: q.scores[i] ?? 0 }))
@@ -302,9 +339,7 @@ const QuestionManagement = () => {
                 scores: q.options.map((item: any) => Number(item.score))
             }))
             for (const q of payload) {
-                await axios.post('/api/questions/', q, {
-                    headers: { Authorization: `Bearer ${token}` }
-                })
+                await apiService.create('/questions/', q)
             }
             message.success('批量添加成功')
             setBatchModalVisible(false)
@@ -329,9 +364,7 @@ const QuestionManagement = () => {
             onOk: async () => {
                 try {
                     await Promise.all(selectedRowKeys.map(id =>
-                        axios.delete(`/api/questions/${id}`, {
-                            headers: { Authorization: `Bearer ${token}` }
-                        })
+                        apiService.delete('/questions', id)
                     ))
                     message.success('批量删除成功')
                     setSelectedRowKeys([])
@@ -349,10 +382,10 @@ const QuestionManagement = () => {
         const formData = new FormData();
         formData.append('file', file);
         try {
-            const res = await axios.post('/api/questions/import_excel', formData, {
+            const res = await axios.post('/questions/import_excel', formData, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            const excelQuestions = res.data.questions.map((q: any) => ({
+            const excelQuestions = res.questions.map((q: any) => ({
                 content: q.content,
                 type: q.type,
                 options: q.options.map((v: string, i: number) => ({ value: v, score: q.scores[i] ?? 0 })),
@@ -374,6 +407,86 @@ const QuestionManagement = () => {
     const handleDownloadWordTemplate = () => {
         window.open('/questionnaire_template.docx');
     };
+
+    // 批量编辑表单内的TextArea修改为RichTextEditor
+    const formItemContent = (form: any, field: any, fieldPath: any[]) => (
+        <Form.Item noStyle shouldUpdate>
+            {() => {
+                const content = form.getFieldValue([...fieldPath, field.name, 'content']) || '';
+                return (
+                    <RichTextEditor
+                        key={`editor-${field.key}`}
+                        value={content}
+                        onChange={value => form.setFieldValue([...fieldPath, field.name, 'content'], value)}
+                        placeholder="请输入题目内容，可以直接上传或粘贴图片"
+                    />
+                );
+            }}
+        </Form.Item>
+    );
+
+    // 修复类型映射中缺少case
+    const getTypeText = (type: string): string => {
+        const typeMap: Record<string, string> = {
+            'single': '单选题',
+            'multiple': '多选题',
+            'indefinite': '不定项',
+            'case': '案例背景题'
+        };
+        return typeMap[type] || type;
+    };
+
+    // 修改表格，添加展开功能
+    const expandedRowRender = (record: Question) => {
+        // 只有案例背景题且有子题时才展开显示
+        if (record.type !== 'case' || !record.children || record.children.length === 0) {
+            return null
+        }
+
+        return (
+            <List
+                dataSource={record.children}
+                renderItem={(item: Question, index) => (
+                    <List.Item
+                        actions={[
+                            <Button
+                                type="link"
+                                icon={<EditOutlined />}
+                                onClick={() => handleEdit(item)}
+                            >
+                                编辑
+                            </Button>,
+                            <Popconfirm
+                                title="确定要删除该题目吗？"
+                                onConfirm={() => handleDelete(item.id!)}
+                                okText="确定"
+                                cancelText="取消"
+                            >
+                                <Button
+                                    type="link"
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                >
+                                    删除
+                                </Button>
+                            </Popconfirm>
+                        ]}
+                    >
+                        <div style={{ paddingLeft: 24 }}>
+                            <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
+                                子题{index + 1}: <QuestionContentDisplay content={item.content} maxLength={100} />
+                            </div>
+                            <div style={{ color: '#666', fontSize: '12px' }}>
+                                类型: {getTypeText(item.type)} |
+                                选项数: {item.options.length} |
+                                选项乱序: {item.shuffle_options ? '已启用' : '未启用'}
+                            </div>
+                        </div>
+                    </List.Item>
+                )}
+            />
+        )
+    }
 
     return (
         <div style={{ position: 'relative', minHeight: 600 }}>
@@ -454,6 +567,10 @@ const QuestionManagement = () => {
                         selectedRowKeys,
                         onChange: setSelectedRowKeys
                     }}
+                    expandable={{
+                        expandedRowRender: expandedRowRender,
+                        rowExpandable: (record: Question) => record.type === 'case' && Array.isArray(record.children) && record.children.length > 0
+                    }}
                 />
 
                 {/* 单题编辑弹窗 */}
@@ -461,8 +578,14 @@ const QuestionManagement = () => {
                     title={editingQuestion ? '编辑题目' : '添加题目'}
                     open={modalVisible}
                     onOk={handleModalOk}
-                    onCancel={() => setModalVisible(false)}
+                    onCancel={() => {
+                        setModalVisible(false);
+                        setEditingQuestion(undefined);
+                        form.resetFields();
+                    }}
                     width={800}
+                    okText="确定"
+                    cancelText="取消"
                 >
                     <Form form={form} layout="vertical">
                         <Form.Item
@@ -470,7 +593,16 @@ const QuestionManagement = () => {
                             label="题目内容"
                             rules={[{ required: true, message: '请输入题目内容' }]}
                         >
-                            <TextArea rows={4} />
+                            <Form.Item noStyle shouldUpdate>
+                                {({ getFieldValue }) => (
+                                    <RichTextEditor
+                                        key={`editor-${form.getFieldValue('content')}`}
+                                        value={getFieldValue('content') || ''}
+                                        onChange={value => form.setFieldValue('content', value)}
+                                        placeholder="请输入题目内容，可以直接上传或粘贴图片"
+                                    />
+                                )}
+                            </Form.Item>
                         </Form.Item>
 
                         <Form.Item
@@ -499,15 +631,17 @@ const QuestionManagement = () => {
                                     {fields.map((field, idx) => (
                                         <Space key={field.key} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
                                             <Form.Item
-                                                {...field}
+                                                key={`${field.key}-value`}
                                                 name={[field.name, 'value']}
+                                                fieldKey={[field.fieldKey, 'value']}
                                                 rules={[{ required: true, message: '请输入选项内容' }]}
                                             >
                                                 <Input placeholder={`选项${String.fromCharCode(65 + idx)}`} style={{ width: 200 }} />
                                             </Form.Item>
                                             <Form.Item
-                                                {...field}
+                                                key={`${field.key}-score`}
                                                 name={[field.name, 'score']}
+                                                fieldKey={[field.fieldKey, 'score']}
                                                 rules={[{ required: true, message: '请输入分数' }]}
                                             >
                                                 <Input type="number" placeholder="分数" style={{ width: 80 }} />
@@ -529,7 +663,10 @@ const QuestionManagement = () => {
                     title="批量导入题目"
                     open={batchModalVisible}
                     onOk={handleBatchOk}
-                    onCancel={() => setBatchModalVisible(false)}
+                    onCancel={() => {
+                        setBatchModalVisible(false);
+                        batchForm.resetFields();
+                    }}
                     width={900}
                     okText="全部提交"
                 >
@@ -540,17 +677,19 @@ const QuestionManagement = () => {
                                     {fields.map((field, qidx) => (
                                         <Card key={field.key} style={{ marginBottom: 16 }} title={`题目${qidx + 1}`}>
                                             <Form.Item
-                                                {...field}
+                                                key={`${field.key}-content`}
                                                 name={[field.name, 'content']}
                                                 label="题目内容"
+                                                fieldKey={[field.fieldKey, 'content']}
                                                 rules={[{ required: true, message: '请输入题目内容' }]}
                                             >
-                                                <TextArea rows={2} />
+                                                {formItemContent(batchForm, field, ['questions'])}
                                             </Form.Item>
                                             <Form.Item
-                                                {...field}
+                                                key={`${field.key}-type`}
                                                 name={[field.name, 'type']}
                                                 label="题型"
+                                                fieldKey={[field.fieldKey, 'type']}
                                                 rules={[{ required: true, message: '请选择题型' }]}
                                             >
                                                 <Select style={{ width: 200 }}>
@@ -565,15 +704,17 @@ const QuestionManagement = () => {
                                                         {optFields.map((opt, idx) => (
                                                             <Space key={opt.key} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
                                                                 <Form.Item
-                                                                    {...opt}
+                                                                    key={`${opt.key}-value`}
                                                                     name={[opt.name, 'value']}
+                                                                    fieldKey={[opt.fieldKey, 'value']}
                                                                     rules={[{ required: true, message: '请输入选项内容' }]}
                                                                 >
                                                                     <Input placeholder={`选项${String.fromCharCode(65 + idx)}`} style={{ width: 200 }} />
                                                                 </Form.Item>
                                                                 <Form.Item
-                                                                    {...opt}
+                                                                    key={`${opt.key}-score`}
                                                                     name={[opt.name, 'score']}
+                                                                    fieldKey={[opt.fieldKey, 'score']}
                                                                     rules={[{ required: true, message: '请输入分数' }]}
                                                                 >
                                                                     <Input type="number" placeholder="分数" style={{ width: 80 }} />
@@ -600,13 +741,23 @@ const QuestionManagement = () => {
                     title="添加案例背景题"
                     open={caseModalVisible}
                     onOk={handleCaseModalOk}
-                    onCancel={() => setCaseModalVisible(false)}
+                    onCancel={() => {
+                        setCaseModalVisible(false);
+                        setCaseBackground('');
+                        setCaseQuestions([]);
+                        caseForm.resetFields();
+                    }}
                     width={900}
                     okText="提交全部"
                 >
                     <div style={{ marginBottom: 16 }}>
-                        <div style={{ fontWeight: 600, marginBottom: 8 }}>案例背景（<span style={{ color: '#faad14' }}>若有表格，请插入（复制）图片</span>）：</div>
-                        <ReactQuill value={caseBackground} onChange={setCaseBackground} theme="snow" modules={quillModules} style={{ minHeight: 120 }} />
+                        <div style={{ fontWeight: 600, marginBottom: 8 }}>案例背景（支持直接粘贴或上传图片）：</div>
+                        <RichTextEditor
+                            key={`editor-${caseBackground}`}
+                            value={caseBackground}
+                            onChange={setCaseBackground}
+                            placeholder="请输入案例背景内容，可以直接上传或粘贴图片"
+                        />
                     </div>
                     <Form form={caseForm} layout="vertical">
                         <Form.List name="questions" initialValue={caseQuestions}>
@@ -616,17 +767,19 @@ const QuestionManagement = () => {
                                         <Card key={field.key} style={{ marginBottom: 16 }} title={`子题${qidx + 1}`}
                                             extra={fields.length > 1 ? <MinusCircleOutlined onClick={() => remove(field.name)} /> : null}>
                                             <Form.Item
-                                                {...field}
+                                                key={`${field.key}-content`}
                                                 name={[field.name, 'content']}
                                                 label="题目内容"
+                                                fieldKey={[field.fieldKey, 'content']}
                                                 rules={[{ required: true, message: '请输入题目内容' }]}
                                             >
-                                                <TextArea rows={2} />
+                                                {formItemContent(caseForm, field, ['questions'])}
                                             </Form.Item>
                                             <Form.Item
-                                                {...field}
+                                                key={`${field.key}-type`}
                                                 name={[field.name, 'type']}
                                                 label="题型"
+                                                fieldKey={[field.fieldKey, 'type']}
                                                 rules={[{ required: true, message: '请选择题型' }]}
                                             >
                                                 <Select style={{ width: 200 }}>
@@ -636,9 +789,10 @@ const QuestionManagement = () => {
                                                 </Select>
                                             </Form.Item>
                                             <Form.Item
-                                                {...field}
+                                                key={`${field.key}-shuffle_options`}
                                                 name={[field.name, 'shuffle_options']}
                                                 label="选项乱序"
+                                                fieldKey={[field.fieldKey, 'shuffle_options']}
                                                 valuePropName="checked"
                                             >
                                                 <Checkbox>启用选项乱序</Checkbox>
@@ -649,15 +803,17 @@ const QuestionManagement = () => {
                                                         {optFields.map((opt, idx) => (
                                                             <Space key={opt.key} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
                                                                 <Form.Item
-                                                                    {...opt}
+                                                                    key={`${opt.key}-value`}
                                                                     name={[opt.name, 'value']}
+                                                                    fieldKey={[opt.fieldKey, 'value']}
                                                                     rules={[{ required: true, message: '请输入选项内容' }]}
                                                                 >
                                                                     <Input placeholder={`选项${String.fromCharCode(65 + idx)}`} style={{ width: 200 }} />
                                                                 </Form.Item>
                                                                 <Form.Item
-                                                                    {...opt}
+                                                                    key={`${opt.key}-score`}
                                                                     name={[opt.name, 'score']}
+                                                                    fieldKey={[opt.fieldKey, 'score']}
                                                                     rules={[{ required: true, message: '请输入分数' }]}
                                                                 >
                                                                     <Input type="number" placeholder="分数" style={{ width: 80 }} />

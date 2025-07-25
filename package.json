@@ -1,7 +1,10 @@
 {
   "dependencies": {
     "@ant-design/icons": "^6.0.0",
+    "@monaco-editor/react": "^4.7.0",
     "echarts": "^5.6.0",
-    "echarts-for-react": "^3.0.2"
+    "echarts-for-react": "^3.0.2",
+    "js-yaml": "^4.1.0",
+    "yaml": "^2.8.0"
   }
 }

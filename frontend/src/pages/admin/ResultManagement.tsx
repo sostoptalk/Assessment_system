@@ -4,6 +4,7 @@ import type { TabsProps } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
+import { apiService } from '../../utils/api';
 
 interface ScoreDetail {
     name: string;
@@ -196,30 +197,28 @@ const ResultManagement: React.FC = () => {
 
     // 获取试卷列表
     useEffect(() => {
-        axios.get('/api/papers', {
-            headers: { Authorization: `Bearer ${token}` }
-        }).then(res => {
-            console.log('试卷列表:', res.data);
-            setPaperOptions(res.data.map((p: any) => ({ label: p.name, value: p.id })));
-        }).catch(err => {
-            console.error('获取试卷列表失败:', err);
-            message.error('获取试卷列表失败');
-        });
+        apiService.getList('/papers')
+            .then(res => {
+                console.log('试卷列表:', res);
+                setPaperOptions(res.map((p: any) => ({ label: p.name, value: p.id })));
+            }).catch(err => {
+                console.error('获取试卷列表失败:', err);
+                message.error('获取试卷列表失败');
+            });
 
-        axios.get('/api/users', {
-            headers: { Authorization: `Bearer ${token}` }
-        }).then(res => {
-            console.log('用户列表:', res.data);
-            const participants = res.data.filter((u: any) => u.role === 'participant');
-            console.log('被试者列表:', participants);
-            setUserOptions(participants.map((u: any) => ({
-                label: u.real_name || u.username,
-                value: u.id
-            })));
-        }).catch(err => {
-            console.error('获取用户列表失败:', err);
-            message.error('获取用户列表失败');
-        });
+        apiService.getList('/users')
+            .then(res => {
+                console.log('用户列表:', res);
+                const participants = res.filter((u: any) => u.role === 'participant');
+                console.log('被试者列表:', participants);
+                setUserOptions(participants.map((u: any) => ({
+                    label: u.real_name || u.username,
+                    value: u.id
+                })));
+            }).catch(err => {
+                console.error('获取用户列表失败:', err);
+                message.error('获取用户列表失败');
+            });
     }, [token]);
 
     // 按试卷筛选
@@ -245,13 +244,10 @@ const ResultManagement: React.FC = () => {
             if (filters.age_min !== undefined && filters.age_min !== null) params.age_min = filters.age_min;
             if (filters.age_max !== undefined && filters.age_max !== null) params.age_max = filters.age_max;
         }
-        axios.get('/api/results/by-paper', {
-            params,
-            headers: { Authorization: `Bearer ${token}` }
-        })
+        apiService.getList('/results/by-paper', params)
             .then(res => {
-                console.log('按试卷查询结果:', res.data);
-                setByPaperData(res.data);
+                console.log('按试卷查询结果:', res);
+                setByPaperData(res);
             })
             .catch((err) => {
                 console.error('按试卷查询失败:', err);
@@ -278,16 +274,13 @@ const ResultManagement: React.FC = () => {
             if (filters.age_min !== undefined && filters.age_min !== null) params.age_min = filters.age_min;
             if (filters.age_max !== undefined && filters.age_max !== null) params.age_max = filters.age_max;
         }
-        const url = '/api/results/by-user';
+        const url = '/results/by-user';
         console.log('请求URL:', url, '参数:', params);
 
-        axios.get(url, {
-            params,
-            headers: { Authorization: `Bearer ${token}` }
-        })
+        apiService.getList(url, params)
             .then(res => {
-                console.log('按被试者查询结果:', res.data);
-                setByUserData(res.data);
+                console.log('按被试者查询结果:', res);
+                setByUserData(res);
             })
             .catch((err) => {
                 console.error('按被试者查询失败:', err);

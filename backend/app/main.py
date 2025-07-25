@@ -7,7 +7,11 @@ FastAPI 后端主程序
 """
 from sqlalchemy import text
 from typing import Optional, List
+import os
+import shutil
+from uuid import uuid4
 from fastapi import FastAPI, Depends, HTTPException, status, APIRouter, File, UploadFile, Body, Query
+from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, ForeignKey, Enum, Float
@@ -29,7 +33,7 @@ import pandas as pd
 import re
 # 导入Report模型，但需要确保在Base定义之后导入
 
-print("=== 3当前 main.py 被加载 ===")
+print("=== 当前 main.py 被加载 ===")
 
 # 数据库配置
 SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root:Yrui2997@localhost:3306/test_assessment?charset=utf8mb4"
@@ -97,6 +101,7 @@ class Paper(Base):
     
     # 关联关系
     reports = relationship("Report", back_populates="paper")
+    report_templates = relationship("ReportTemplate", back_populates="paper")
 
 # 维度表
 class Dimension(Base):
@@ -290,8 +295,16 @@ class Report(Base):
 # 创建所有表
 Base.metadata.create_all(bind=engine)
 
+# 创建上传目录
+UPLOAD_DIR = "uploads/images"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 # FastAPI 实例
 app = FastAPI(title="人才测评平台API", description="后端服务，含用户注册/登录等基础功能")
+
+# 挂载上传目录为静态文件目录
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/reports/preview", StaticFiles(directory="reports/generators/output"), name="report_previews")
 
 # 注册路由信息打印
 @app.on_event("startup")
@@ -312,6 +325,14 @@ app.add_middleware(
 )
 
 def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# 为外部调用提供获取数据库会话的函数
+def get_db_session():
     db = SessionLocal()
     try:
         yield db
@@ -2123,6 +2144,10 @@ app.include_router(router)
 from app.api import report_api
 app.include_router(report_api.router)
 
+# 添加报告模板管理API
+from app.api import report_template_api
+app.include_router(report_template_api.router)
+
 # ========== 测试结果API ========== #
 
 class ScoreDetail(BaseModel):
@@ -2819,6 +2844,34 @@ def process_all_redo_requests(
     return {"msg": "全部已重新分配"}
 #// ... existing code ...
 
+@app.post("/upload/image", summary="上传图片")
+async def upload_image(file: UploadFile = File(...), token: str = Depends(OAuth2PasswordBearer(tokenUrl="/login"))):
+    """上传图片并返回URL路径"""
+    try:
+        # 验证token
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="无效Token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Token校验失败")
+    
+    # 验证文件类型
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="只能上传图片文件")
+    
+    # 生成唯一文件名
+    file_ext = os.path.splitext(file.filename)[1] if os.path.splitext(file.filename)[1] else ".png"
+    unique_filename = f"{uuid4()}{file_ext}"
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+    
+    # 保存文件
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    # 返回文件URL
+    file_url = f"/uploads/images/{unique_filename}"
+    return {"url": file_url, "filename": unique_filename}
 
 if __name__ == "__main__":
     import uvicorn

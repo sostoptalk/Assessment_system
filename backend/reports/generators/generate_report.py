@@ -1,13 +1,455 @@
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, Template
 from weasyprint import HTML
 import base64
-import radar_chart
+# 修复导入路径
+from .radar_chart import generate_radar_chart
 import os
 import re
 import unicodedata
 from datetime import datetime
 import pandas as pd
 from tqdm import tqdm
+import yaml
+import json
+import random
+from typing import Dict, Any, List, Optional, Union
+
+# 组件类型定义
+COMPONENT_TYPES = {
+    'header': '页眉',
+    'text': '文本段落',
+    'chart': '图表',
+    'table': '表格',
+    'dimension': '维度展示',
+    'scorecard': '评分卡',
+    'summary': '总结',
+    'footer': '页脚'
+}
+
+class TemplateParser:
+    """
+    通用模板解析器 - 支持组件化解析和渲染
+    """
+    
+    def __init__(self, template_content: str = None, config: Dict = None):
+        """初始化解析器
+        
+        Args:
+            template_content: HTML模板内容
+            config: 配置数据（YAML配置转为dict）
+        """
+        self.template_content = template_content
+        self.config = config or {}
+        self.components = []
+        self._env = Environment(autoescape=True)
+    
+    def parse_components(self) -> List[Dict]:
+        """从模板中解析组件结构
+        
+        Returns:
+            组件列表
+        """
+        if not self.template_content:
+            return []
+            
+        # 解析HTML中的组件标记
+        component_pattern = r'<!-- component:(\w+) id:([a-zA-Z0-9_-]+) -->(.*?)<!-- /component -->'
+        matches = re.finditer(component_pattern, self.template_content, re.DOTALL)
+        
+        components = []
+        for match in matches:
+            comp_type, comp_id, content = match.groups()
+            components.append({
+                'type': comp_type,
+                'id': comp_id,
+                'content': content.strip()
+            })
+            
+        self.components = components
+        return components
+    
+    def get_component_by_id(self, component_id: str) -> Dict:
+        """根据ID获取组件
+        
+        Args:
+            component_id: 组件ID
+        
+        Returns:
+            组件信息字典
+        """
+        for comp in self.components:
+            if comp['id'] == component_id:
+                return comp
+        return None
+    
+    def update_component(self, component_id: str, content: str) -> bool:
+        """更新指定组件的内容
+        
+        Args:
+            component_id: 组件ID
+            content: 新的内容
+        
+        Returns:
+            是否更新成功
+        """
+        for i, comp in enumerate(self.components):
+            if comp['id'] == component_id:
+                self.components[i]['content'] = content
+                return True
+        return False
+    
+    def render_component(self, component: Dict, data: Dict) -> str:
+        """渲染单个组件
+        
+        Args:
+            component: 组件信息
+            data: 数据上下文
+        
+        Returns:
+            渲染后的HTML
+        """
+        template = self._env.from_string(component['content'])
+        return template.render(**data)
+    
+    def assemble_template(self) -> str:
+        """重新组装模板内容
+        
+        Returns:
+            组装后的HTML模板内容
+        """
+        if not self.template_content or not self.components:
+            return self.template_content
+            
+        result = self.template_content
+        for comp in self.components:
+            start_marker = f"<!-- component:{comp['type']} id:{comp['id']} -->"
+            end_marker = "<!-- /component -->"
+            pattern = f"{start_marker}(.*?){end_marker}"
+            
+            replacement = f"{start_marker}{comp['content']}{end_marker}"
+            result = re.sub(pattern, replacement, result, flags=re.DOTALL)
+            
+        return result
+        
+    def render_template(self, data: Dict) -> str:
+        """渲染完整模板
+        
+        Args:
+            data: 数据上下文
+        
+        Returns:
+            渲染后的HTML内容
+        """
+        template = self._env.from_string(self.template_content)
+        return template.render(**data)
+
+def generate_mock_data(config: Dict) -> Dict:
+    """生成模拟数据用于预览
+    
+    Args:
+        config: 配置数据
+        
+    Returns:
+        模拟数据字典
+    """
+    # 获取字段映射
+    field_mapping = config.get('field_mapping', {})
+    dimensions = config.get('dimensions', [])
+    
+    # 创建基本用户信息
+    user_info = {
+        "name": "测试用户",
+        "total_score": round(random.uniform(6.0, 9.0), 2)
+    }
+    
+    # 生成维度数据
+    dimensions_data = {}
+    for dim in dimensions:
+        dim_name = dim['name']
+        dim_score = round(random.uniform(6.0, 9.0), 2)
+        dimensions_data[dim_name] = {
+            "score": dim_score,
+            "subs": {}
+        }
+        
+        # 生成子维度数据
+        if 'sub_dimensions' in dim:
+            for sub in dim.get('sub_dimensions', []):
+                sub_name = sub['name']
+                sub_score = round(random.uniform(5.8, 9.2), 2)
+                dimensions_data[dim_name]["subs"][sub_name] = {
+                    "score": sub_score
+                }
+    
+    # 生成评价级别
+    score_levels = config.get('score_levels', [])
+    total_score = user_info['total_score']
+    
+    # 查找分数对应的评价级别
+    performance_eval = {
+        "summary": "总体评价内容",
+        "development_focus": "发展重点内容"
+    }
+    
+    for level in score_levels:
+        if level.get('min', 0) <= total_score <= level.get('max', 10):
+            performance_eval["summary"] = level.get('summary', "")
+            performance_eval["development_focus"] = level.get('development_focus', "")
+            break
+    
+    # 组装维度评价
+    dimension_evaluations = {}
+    for dim_name, dim_data in dimensions_data.items():
+        dim_score = dim_data["score"]
+        eval_level = ""
+        
+        # 根据分数确定评价级别
+        if dim_score >= 8.5:
+            eval_level = "high"
+        elif dim_score >= 7.5:
+            eval_level = "medium"
+        else:
+            eval_level = "low"
+        
+        # 获取维度评价内容
+        dimension_eval = config.get('dimension_evaluations', {}).get(dim_name, {}).get(eval_level, {})
+        if isinstance(dimension_eval, dict) and 'dimension_eval' in dimension_eval:
+            dimension_evaluations[dim_name] = {
+                "eval_level": eval_level,
+                "dimension_eval": dimension_eval.get('dimension_eval', "")
+            }
+            
+            # 添加子维度评价
+            if 'sub_dimensions' in dimension_eval and dim_name in dimensions_data:
+                for sub_name, sub_data in dimensions_data[dim_name]["subs"].items():
+                    if sub_name in dimension_eval.get('sub_dimensions', {}):
+                        dimensions_data[dim_name]["subs"][sub_name]["evaluation"] = {
+                            "eval_level": eval_level,
+                            "潜质特点": dimension_eval['sub_dimensions'][sub_name].get('潜质特点', ""),
+                            "工作中的倾向": dimension_eval['sub_dimensions'][sub_name].get('工作中的倾向', "")
+                        }
+    
+    # 生成优劣势数据
+    strengths = {"总分": {"average": round(total_score - 0.5, 2), "diff": 0.5}}
+    weaknesses = {"总分": {"average": round(total_score + 0.5, 2), "diff": -0.5}}
+    
+    # 随机选择一些维度作为优势和劣势
+    dim_names = list(dimensions_data.keys())
+    random.shuffle(dim_names)
+    
+    for i, dim_name in enumerate(dim_names):
+        if i % 2 == 0:  # 偶数为优势
+            strengths[dim_name] = {
+                "average": round(dimensions_data[dim_name]["score"] - 0.7, 2),
+                "diff": 0.7
+            }
+        else:  # 奇数为劣势
+            weaknesses[dim_name] = {
+                "average": round(dimensions_data[dim_name]["score"] + 0.7, 2),
+                "diff": -0.7
+            }
+            
+    # 组装最终测试数据
+    test_data = {
+        "user_info": user_info,
+        "dimensions": dimensions_data,
+        "performance_eval": performance_eval,
+        "dimension_evaluations": dimension_evaluations,
+        "strengths": strengths,
+        "weaknesses": weaknesses
+    }
+    
+    return test_data
+
+# 增强预览HTML生成函数，支持组件化处理
+def generate_preview_html(config_path, template_path, test_data=None):
+    """
+    生成报告模板的预览HTML
+    
+    Args:
+        config_path: YAML配置文件路径
+        template_path: HTML模板文件路径
+        test_data: 可选的测试数据，如果为None则生成随机测试数据
+    
+    Returns:
+        str: 预览HTML内容
+    """
+    try:
+        # 读取配置文件
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+            print(f"成功加载配置文件: {config_path}")
+        except Exception as e:
+            print(f"读取配置文件失败: {str(e)}")
+            config = {
+                "paper_id": 1,
+                "paper_name": "默认测试报告",
+                "paper_description": "配置文件加载失败，使用默认配置"
+            }
+        
+        # 读取模板内容
+        try:
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template_content = f.read()
+            print(f"成功加载模板文件: {template_path}, 大小: {len(template_content)}")
+        except Exception as e:
+            print(f"读取模板文件失败: {str(e)}")
+            return f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>模板加载错误</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        .error {{ color: red; padding: 10px; border: 1px solid red; border-radius: 5px; }}
+    </style>
+</head>
+<body>
+    <h1>模板加载错误</h1>
+    <div class="error">
+        <p>无法加载模板文件: {str(e)}</p>
+    </div>
+</body>
+</html>"""
+        
+        # 创建模板解析器
+        parser = TemplateParser(template_content, config)
+        
+        # 尝试解析组件（用于未来组件化编辑）
+        components = parser.parse_components()
+        
+        # 如果没有提供测试数据，创建模拟数据
+        if not test_data:
+            test_data = generate_mock_data(config)
+        
+        # 处理测试数据，适配模板
+        processed_data = prepare_report_data(test_data)
+        
+        # 创建雷达图（如果配置中需要）
+        try:
+            if config.get("report_generation", {}).get("include_chart", True):
+                chart_filename = generate_filename("radar_chart", processed_data["user_info"]["name"])
+                chart_path = os.path.join("assets", chart_filename)
+                
+                # 确保assets目录存在
+                os.makedirs("assets", exist_ok=True)
+                
+                # 生成雷达图并返回路径
+                radar_data = convert_to_radar_data(processed_data["dimensions"])
+                chart_path = generate_radar_chart(
+                    radar_data, 
+                    chart_path,
+                    config.get("radar_chart", {})
+                )
+                
+                # 将图片转换为base64嵌入
+                with open(chart_path, "rb") as img_file:
+                    img_data = base64.b64encode(img_file.read()).decode('utf-8')
+                    
+                processed_data["chart_img"] = f"data:image/png;base64,{img_data}"
+        except Exception as e:
+            print(f"生成雷达图失败: {str(e)}")
+            # 提供一个默认的1x1像素透明PNG
+            processed_data["chart_img"] = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        
+        # 设置Jinja2环境
+        template_dir = os.path.dirname(template_path)
+        env = Environment(loader=FileSystemLoader(template_dir))
+        
+        # 添加自定义过滤器
+        env.filters['get_dim_strengths'] = get_dim_strengths
+        env.filters['get_sub_strengths'] = get_sub_strengths
+        env.filters['get_dim_weaknesses'] = get_dim_weaknesses
+        env.filters['get_sub_weaknesses'] = get_sub_weaknesses
+        env.filters['get_top_strength'] = get_top_strength
+        env.filters['get_main_weakness'] = get_main_weakness
+        
+        # 尝试直接从字符串加载模板
+        try:
+            template = env.from_string(template_content)
+        except Exception as e:
+            print(f"从字符串加载模板失败: {str(e)}")
+            # 尝试使用文件名加载
+            try:
+                template = env.get_template(os.path.basename(template_path))
+            except Exception as e:
+                print(f"无法加载模板: {str(e)}")
+                return f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>模板语法错误</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        .error {{ color: red; padding: 10px; border: 1px solid red; border-radius: 5px; }}
+        pre {{ background: #f8f8f8; padding: 10px; overflow: auto; }}
+    </style>
+</head>
+<body>
+    <h1>模板语法错误</h1>
+    <div class="error">
+        <p>{str(e)}</p>
+    </div>
+    <pre>{template_content[:200]}...</pre>
+</body>
+</html>"""
+        
+        # 渲染模板
+        try:
+            html_content = template.render(**processed_data)
+            print(f"模板渲染成功，HTML长度: {len(html_content)}")
+            return html_content
+        except Exception as e:
+            print(f"模板渲染失败: {str(e)}")
+            import traceback
+            error_trace = traceback.format_exc()
+            return f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>模板渲染错误</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        .error {{ color: red; padding: 10px; border: 1px solid red; border-radius: 5px; }}
+        pre {{ background: #f8f8f8; padding: 10px; overflow: auto; }}
+    </style>
+</head>
+<body>
+    <h1>模板渲染错误</h1>
+    <div class="error">
+        <h2>错误信息:</h2>
+        <p>{str(e)}</p>
+    </div>
+    <h3>错误堆栈:</h3>
+    <pre>{error_trace}</pre>
+</body>
+</html>"""
+    
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"预览生成过程中出错: {str(e)}")
+        print(error_trace)
+        return f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>预览生成错误</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        .error {{ color: red; padding: 10px; border: 1px solid red; border-radius: 5px; }}
+        pre {{ background: #f8f8f8; padding: 10px; overflow: auto; max-height: 300px; }}
+    </style>
+</head>
+<body>
+    <h1>预览生成错误</h1>
+    <div class="error">
+        <h2>错误信息:</h2>
+        <p>{str(e)}</p>
+    </div>
+    <h3>错误堆栈:</h3>
+    <pre>{error_trace}</pre>
+    <p>请检查配置和模板是否正确。</p>
+</body>
+</html>"""
+
 
 def read_excel_to_report_data_list(file_path):
     """
@@ -1074,7 +1516,7 @@ def batch_generate_reports(excel_path, output_dir="output", assets_dir="assets")
             radar_data = convert_to_radar_data(report_data['dimensions'])
             chart_filename = generate_filename("radar_chart", user_name)
             chart_path = os.path.join(assets_dir, chart_filename)
-            generated_path = radar_chart.generate_radar_chart(radar_data, chart_path)
+            generated_path = generate_radar_chart(radar_data, chart_path)
 
             # 设置Jinja2环境
             env = Environment(loader=FileSystemLoader('.'))
@@ -1107,6 +1549,194 @@ def batch_generate_reports(excel_path, output_dir="output", assets_dir="assets")
             traceback.print_exc()
 
     print(f"\n报告生成完成，保存在: {output_dir}")
+
+def generate_preview_html(config_path, template_path, test_data=None):
+    """
+    生成报告模板的预览HTML
+    
+    Args:
+        config_path: YAML配置文件路径
+        template_path: HTML模板文件路径
+        test_data: 可选的测试数据，如果为None则生成随机测试数据
+    
+    Returns:
+        str: 预览HTML内容
+    """
+    try:
+        # 读取配置文件
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+            print(f"成功加载配置文件: {config_path}")
+        except Exception as e:
+            print(f"读取配置文件失败: {str(e)}")
+            config = {
+                "paper_id": 1,
+                "paper_name": "默认测试报告",
+                "paper_description": "配置文件加载失败，使用默认配置"
+            }
+        
+        # 读取模板内容
+        try:
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template_content = f.read()
+            print(f"成功加载模板文件: {template_path}, 大小: {len(template_content)}")
+        except Exception as e:
+            print(f"读取模板文件失败: {str(e)}")
+            return f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>模板加载错误</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        .error {{ color: red; padding: 10px; border: 1px solid red; border-radius: 5px; }}
+    </style>
+</head>
+<body>
+    <h1>模板加载错误</h1>
+    <div class="error">
+        <p>无法加载模板文件: {str(e)}</p>
+    </div>
+</body>
+</html>"""
+        
+        # 创建模板解析器
+        parser = TemplateParser(template_content, config)
+        
+        # 尝试解析组件（用于未来组件化编辑）
+        components = parser.parse_components()
+        
+        # 如果没有提供测试数据，创建模拟数据
+        if not test_data:
+            test_data = generate_mock_data(config)
+        
+        # 处理测试数据，适配模板
+        processed_data = prepare_report_data(test_data)
+        
+        # 创建雷达图（如果配置中需要）
+        try:
+            if config.get("report_generation", {}).get("include_chart", True):
+                chart_filename = generate_filename("radar_chart", processed_data["user_info"]["name"])
+                chart_path = os.path.join("assets", chart_filename)
+                
+                # 确保assets目录存在
+                os.makedirs("assets", exist_ok=True)
+                
+                # 生成雷达图并返回路径
+                radar_data = convert_to_radar_data(processed_data["dimensions"])
+                chart_path = generate_radar_chart(
+                    radar_data, 
+                    chart_path,
+                    config.get("radar_chart", {})
+                )
+                
+                # 将图片转换为base64嵌入
+                with open(chart_path, "rb") as img_file:
+                    img_data = base64.b64encode(img_file.read()).decode('utf-8')
+                    
+                processed_data["chart_img"] = f"data:image/png;base64,{img_data}"
+        except Exception as e:
+            print(f"生成雷达图失败: {str(e)}")
+            # 提供一个默认的1x1像素透明PNG
+            processed_data["chart_img"] = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        
+        # 设置Jinja2环境
+        template_dir = os.path.dirname(template_path)
+        env = Environment(loader=FileSystemLoader(template_dir))
+        
+        # 添加自定义过滤器
+        env.filters['get_dim_strengths'] = get_dim_strengths
+        env.filters['get_sub_strengths'] = get_sub_strengths
+        env.filters['get_dim_weaknesses'] = get_dim_weaknesses
+        env.filters['get_sub_weaknesses'] = get_sub_weaknesses
+        env.filters['get_top_strength'] = get_top_strength
+        env.filters['get_main_weakness'] = get_main_weakness
+        
+        # 尝试直接从字符串加载模板
+        try:
+            template = env.from_string(template_content)
+        except Exception as e:
+            print(f"从字符串加载模板失败: {str(e)}")
+            # 尝试使用文件名加载
+            try:
+                template = env.get_template(os.path.basename(template_path))
+            except Exception as e:
+                print(f"无法加载模板: {str(e)}")
+                return f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>模板语法错误</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        .error {{ color: red; padding: 10px; border: 1px solid red; border-radius: 5px; }}
+        pre {{ background: #f8f8f8; padding: 10px; overflow: auto; }}
+    </style>
+</head>
+<body>
+    <h1>模板语法错误</h1>
+    <div class="error">
+        <p>{str(e)}</p>
+    </div>
+    <pre>{template_content[:200]}...</pre>
+</body>
+</html>"""
+        
+        # 渲染模板
+        try:
+            html_content = template.render(**processed_data)
+            print(f"模板渲染成功，HTML长度: {len(html_content)}")
+            return html_content
+        except Exception as e:
+            print(f"模板渲染失败: {str(e)}")
+            import traceback
+            error_trace = traceback.format_exc()
+            return f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>模板渲染错误</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        .error {{ color: red; padding: 10px; border: 1px solid red; border-radius: 5px; }}
+        pre {{ background: #f8f8f8; padding: 10px; overflow: auto; }}
+    </style>
+</head>
+<body>
+    <h1>模板渲染错误</h1>
+    <div class="error">
+        <h2>错误信息:</h2>
+        <p>{str(e)}</p>
+    </div>
+    <h3>错误堆栈:</h3>
+    <pre>{error_trace}</pre>
+</body>
+</html>"""
+    
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"预览生成过程中出错: {str(e)}")
+        print(error_trace)
+        return f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>预览生成错误</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        .error {{ color: red; padding: 10px; border: 1px solid red; border-radius: 5px; }}
+        pre {{ background: #f8f8f8; padding: 10px; overflow: auto; max-height: 300px; }}
+    </style>
+</head>
+<body>
+    <h1>预览生成错误</h1>
+    <div class="error">
+        <h2>错误信息:</h2>
+        <p>{str(e)}</p>
+    </div>
+    <h3>错误堆栈:</h3>
+    <pre>{error_trace}</pre>
+    <p>请检查配置和模板是否正确。</p>
+</body>
+</html>"""
 
 
 if __name__ == '__main__':

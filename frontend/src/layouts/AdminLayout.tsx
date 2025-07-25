@@ -16,6 +16,7 @@ import PaperManagement from '../pages/admin/PaperManagement'
 import ParticipantManagement from '../pages/admin/ParticipantManagement'
 import ReportManagement from '../pages/admin/ReportManagement'
 import ResultManagement from '../pages/admin/ResultManagement'
+import ReportTemplateManagement from '../pages/admin/ReportTemplateManagement'
 
 const { Header, Sider, Content } = Layout
 
@@ -49,6 +50,11 @@ const AdminLayout = () => {
             key: '/admin/reports',
             icon: <FileTextOutlined />,
             label: '报告管理',
+        },
+        {
+            key: '/admin/report-templates',
+            icon: <FileTextOutlined />,
+            label: '报告模板',
         },
         {
             key: '/admin/result',
@@ -143,6 +149,7 @@ const AdminLayout = () => {
                         <Route path="/papers" element={<PaperManagement />} />
                         <Route path="/participants" element={<ParticipantManagement />} />
                         <Route path="/reports" element={<ReportManagement />} />
+                        <Route path="/report-templates" element={<ReportTemplateManagement />} />
                         <Route path="/result" element={<ResultManagement />} />
                         <Route path="/" element={<Dashboard />} />
                     </Routes>

@@ -34,6 +34,7 @@ import {
 } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
+import { apiService } from '../../utils/api';
 
 interface PaperOption {
     label: string;
@@ -246,32 +247,30 @@ const ReportManagement: React.FC = () => {
 
     // 获取试卷列表
     useEffect(() => {
-        axios.get('/api/papers', {
-            headers: { Authorization: `Bearer ${token}` }
-        }).then(res => {
-            setPaperOptions(res.data.map((p: any) => ({ label: p.name, value: p.id })));
-        }).catch(err => {
-            console.error('获取试卷列表失败:', err);
-            message.error('获取试卷列表失败');
-        });
-    }, [token]);
+        apiService.getList('/papers')
+            .then(res => {
+                setPaperOptions(res.map((p: any) => ({ label: p.name, value: p.id })));
+            }).catch(err => {
+                console.error('获取试卷列表失败:', err);
+                message.error('获取试卷列表失败');
+            });
+    }, []);
 
     // 获取被试者列表
     useEffect(() => {
-        axios.get('/api/users', {
-            headers: { Authorization: `Bearer ${token}` }
-        }).then(res => {
-            const participants = res.data.filter((u: any) => u.role === 'participant');
-            setUserOptions(participants.map((u: any) => ({
-                label: u.real_name || u.username,
-                value: u.id,
-                user_name: u.real_name || u.username
-            })));
-        }).catch(err => {
-            console.error('获取用户列表失败:', err);
-            message.error('获取用户列表失败');
-        });
-    }, [token]);
+        apiService.getList('/users')
+            .then(res => {
+                const participants = res.filter((u: any) => u.role === 'participant');
+                setUserOptions(participants.map((u: any) => ({
+                    label: u.real_name || u.username,
+                    value: u.id,
+                    user_name: u.real_name || u.username
+                })));
+            }).catch(err => {
+                console.error('获取用户列表失败:', err);
+                message.error('获取用户列表失败');
+            });
+    }, []);
 
     // 当试卷改变时，获取该试卷的被试者
     useEffect(() => {
@@ -312,15 +311,12 @@ const ReportManagement: React.FC = () => {
                 if (filters.age_min !== undefined && filters.age_min !== null) params.age_min = filters.age_min;
                 if (filters.age_max !== undefined && filters.age_max !== null) params.age_max = filters.age_max;
             }
-            const response = await axios.get('/api/reports', {
-                params,
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            setStoredReports(response.data.reports);
+            const response = await apiService.getList('/reports', params);
+            setStoredReports(response.reports);
             setReportsPagination({
-                current: response.data.page,
-                pageSize: response.data.page_size,
-                total: response.data.total
+                current: response.page,
+                pageSize: response.page_size,
+                total: response.total
             });
         } catch (error) {
             console.error('获取报告列表失败:', error);

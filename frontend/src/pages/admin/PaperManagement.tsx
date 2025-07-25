@@ -22,8 +22,11 @@ import {
     Upload,
     Tree,
     TreeSelect,
-    Collapse
+    Collapse,
+    Typography
 } from 'antd';
+
+const { Text } = Typography;
 import {
     PlusOutlined,
     EditOutlined,
@@ -41,6 +44,8 @@ import {
 import type { TransferDirection } from 'antd/es/transfer';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
+import QuestionContentDisplay from '../../components/QuestionContentDisplay';
+import RichTextEditor from '../../components/RichTextEditor';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -61,6 +66,8 @@ interface Question {
     type: string;
     options: string[];
     scores: number[];
+    parent_case_id?: number;
+    children?: Question[];  // 添加子题字段
 }
 
 interface User {
@@ -98,6 +105,7 @@ const quillModules = {
 const PaperManagement: React.FC = () => {
     const [papers, setPapers] = useState<Paper[]>([]);
     const [questions, setQuestions] = useState<Question[]>([]);
+    const [filteredQuestions, setFilteredQuestions] = useState<Question[]>([]);
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
@@ -176,7 +184,34 @@ const PaperManagement: React.FC = () => {
             const response = await fetch('http://localhost:8000/questions');
             if (response.ok) {
                 const data = await response.json();
-                setQuestions(data);
+
+                // 组织案例背景题和子题的关系
+                const allQuestions = data;
+                const caseMap = new Map(); // 存储案例背景题ID到题目对象的映射
+                const regularQuestions: Question[] = []; // 存储非子题的普通题目
+
+                // 第一遍遍历，找出所有案例背景题和普通题
+                allQuestions.forEach((q: Question) => {
+                    if (q.type === 'case') {
+                        q.children = []; // 初始化子题数组
+                        caseMap.set(q.id, q);
+                    } else if (!q.parent_case_id) {
+                        regularQuestions.push(q);
+                    }
+                });
+
+                // 第二遍遍历，将子题添加到对应的案例背景题中
+                allQuestions.forEach((q: Question) => {
+                    if (q.parent_case_id && caseMap.has(q.parent_case_id)) {
+                        const parent = caseMap.get(q.parent_case_id);
+                        parent.children.push(q);
+                    }
+                });
+
+                // 合并案例背景题和普通题
+                const result = [...caseMap.values(), ...regularQuestions];
+                setQuestions(result);
+                setFilteredQuestions(result);  // 同时设置 filteredQuestions
             }
         } catch (error) {
             console.error('获取题目列表失败:', error);
@@ -231,7 +266,9 @@ const PaperManagement: React.FC = () => {
     };
 
     // 切换乱序状态
-    const toggleShuffle = async (paperId: number, enableShuffle: boolean) => {
+    const toggleShuffle = async (paperId: number | null, enableShuffle: boolean) => {
+        if (!paperId) return;
+
         setShuffleLoading(true);
         try {
             const token = localStorage.getItem('token') || '';
@@ -246,7 +283,7 @@ const PaperManagement: React.FC = () => {
 
             if (response.ok) {
                 const data = await response.json();
-                message.success(data.message);
+                message.success(enableShuffle ? '题目乱序已启用' : '题目乱序已禁用');
                 // 重新获取乱序状态
                 await fetchShuffleStatus(paperId);
             } else {
@@ -337,19 +374,36 @@ const PaperManagement: React.FC = () => {
             const response = await fetch(`http://localhost:8000/dimensions/${dimensionId}/available-questions?paper_id=${paperId}`);
             if (response.ok) {
                 const data = await response.json();
-                setAvailableQuestions(data);
-            } else {
-                const errorData = await response.json();
-                if (response.status === 400 && errorData.detail?.includes('有子维度')) {
-                    message.warning('该维度有子维度，请为子维度匹配题目');
-                    setDimensionQuestionModalVisible(false);
-                } else {
-                    message.error('获取可匹配题目失败');
-                }
+
+                // 组织案例背景题和子题的关系
+                const allQuestions = data || [];
+                const caseMap = new Map(); // 存储案例背景题ID到题目对象的映射
+                const regularQuestions: Question[] = []; // 存储非子题的普通题目
+
+                // 第一遍遍历，找出所有案例背景题和普通题
+                allQuestions.forEach((q: Question) => {
+                    if (q.type === 'case') {
+                        q.children = []; // 初始化子题数组
+                        caseMap.set(q.id, q);
+                    } else if (!q.parent_case_id) {
+                        regularQuestions.push(q);
+                    }
+                });
+
+                // 第二遍遍历，将子题添加到对应的案例背景题中
+                allQuestions.forEach((q: Question) => {
+                    if (q.parent_case_id && caseMap.has(q.parent_case_id)) {
+                        const parent = caseMap.get(q.parent_case_id);
+                        parent.children.push(q);
+                    }
+                });
+
+                // 合并案例背景题和普通题
+                const result = [...caseMap.values(), ...regularQuestions];
+                setAvailableQuestions(result);
             }
         } catch (error) {
-            console.error('获取可匹配题目失败:', error);
-            message.error('获取可匹配题目失败');
+            console.error('获取可用题目失败:', error);
         }
     };
 
@@ -359,77 +413,120 @@ const PaperManagement: React.FC = () => {
             const response = await fetch(`http://localhost:8000/dimensions/${dimensionId}/matched-questions`);
             if (response.ok) {
                 const data = await response.json();
-                setMatchedQuestions(data);
-            } else {
-                setMatchedQuestions([]);
+
+                // 组织案例背景题和子题的关系
+                const allQuestions = data || [];
+                const caseMap = new Map(); // 存储案例背景题ID到题目对象的映射
+                const regularQuestions: Question[] = []; // 存储非子题的普通题目
+
+                // 第一遍遍历，找出所有案例背景题和普通题
+                allQuestions.forEach((q: Question) => {
+                    if (q.type === 'case') {
+                        q.children = []; // 初始化子题数组
+                        caseMap.set(q.id, q);
+                    } else if (!q.parent_case_id) {
+                        regularQuestions.push(q);
+                    }
+                });
+
+                // 第二遍遍历，将子题添加到对应的案例背景题中
+                allQuestions.forEach((q: Question) => {
+                    if (q.parent_case_id && caseMap.has(q.parent_case_id)) {
+                        const parent = caseMap.get(q.parent_case_id);
+                        parent.children.push(q);
+                    }
+                });
+
+                // 合并案例背景题和普通题
+                const result = [...caseMap.values(), ...regularQuestions];
+                setMatchedQuestions(result);
             }
         } catch (error) {
-            setMatchedQuestions([]);
+            console.error('获取匹配题目失败:', error);
         }
     };
 
-    // 匹配题目到维度
+    // 修改匹配题目到维度的函数，支持案例背景题和子题的匹配
     const matchQuestionsToDimension = async () => {
         if (!currentDimensionForQuestion || selectedQuestionsForDimension.length === 0) return;
 
+        const dimensionId = currentDimensionForQuestion.id;
+
         try {
-            const response = await fetch(`http://localhost:8000/dimensions/${currentDimensionForQuestion.id}/match-questions`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ question_ids: selectedQuestionsForDimension }),
-            });
-            if (response.ok) {
-                message.success(`成功匹配 ${selectedQuestionsForDimension.length} 道题目到维度`);
-                setSelectedQuestionsForDimension([]);
-                if (currentDimensionForQuestion && currentPaperForDimension !== null) {
-                    fetchAvailableQuestionsForDimension(currentDimensionForQuestion.id, currentPaperForDimension);
-                }
-                fetchMatchedQuestionsForDimension(currentDimensionForQuestion.id);
-                // 刷新维度列表
-                if (currentPaperForDimension) {
-                    fetchPaperDimensions(currentPaperForDimension);
-                }
-            } else {
-                const errorData = await response.json();
-                if (response.status === 400) {
-                    if (errorData.detail?.includes('有子维度')) {
-                        message.warning('该维度有子维度，请为子维度匹配题目');
-                    } else if (errorData.detail?.includes('已被其他维度匹配')) {
-                        message.warning('部分题目已被其他维度匹配，请重新选择');
-                        // 刷新可匹配题目列表
-                        if (currentDimensionForQuestion && currentPaperForDimension !== null) {
-                            fetchAvailableQuestionsForDimension(currentDimensionForQuestion.id, currentPaperForDimension);
-                        }
-                    } else {
-                        message.error(errorData.detail || '匹配题目失败');
-                    }
-                } else {
-                    message.error('匹配题目失败');
+            // 处理所有选中题目，包括案例背景题的子题
+            const allSelectedQuestionIds: number[] = [];
+
+            for (const questionId of selectedQuestionsForDimension) {
+                // 先添加主题目
+                allSelectedQuestionIds.push(questionId);
+
+                // 如果是案例背景题，添加其所有子题
+                const selectedQuestion = availableQuestions.find(q => q.id === questionId);
+                if (selectedQuestion && selectedQuestion.type === 'case' && selectedQuestion.children) {
+                    selectedQuestion.children.forEach(child => {
+                        allSelectedQuestionIds.push(child.id);
+                    });
                 }
             }
+
+            const response = await fetch(`http://localhost:8000/dimensions/${dimensionId}/match-questions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question_ids: allSelectedQuestionIds }),
+            });
+
+            if (response.ok) {
+                message.success('匹配题目成功');
+                setSelectedQuestionsForDimension([]);
+
+                // 刷新两个列表
+                await fetchMatchedQuestionsForDimension(dimensionId);
+                await fetchAvailableQuestionsForDimension(dimensionId, currentPaperId);
+            } else {
+                message.error('匹配失败');
+            }
         } catch (error) {
-            message.error('网络错误');
+            console.error('匹配题目失败:', error);
+            message.error('匹配失败');
         }
     };
 
     // 获取试卷题目
     const fetchPaperQuestions = async (paperId: number) => {
         try {
-            console.log('开始获取试卷题目，试卷ID:', paperId);
             const response = await fetch(`http://localhost:8000/papers/${paperId}/questions/`);
             if (response.ok) {
                 const data = await response.json();
-                const questions = data.questions || [];
-                console.log('获取到题目数据:', questions);
-                setPaperQuestions(questions);
-                console.log('题目状态已更新，题目数:', questions.length);
-            } else {
-                message.error('获取试卷题目失败');
-                console.error('获取题目失败，状态码:', response.status);
+
+                // 组织案例背景题和子题的关系
+                const allQuestions = data.questions || [];
+                const caseMap = new Map(); // 存储案例背景题ID到题目对象的映射
+                const regularQuestions: Question[] = []; // 存储非子题的普通题目
+
+                // 第一遍遍历，找出所有案例背景题和普通题
+                allQuestions.forEach((q: Question) => {
+                    if (q.type === 'case') {
+                        q.children = []; // 初始化子题数组
+                        caseMap.set(q.id, q);
+                    } else if (!q.parent_case_id) {
+                        regularQuestions.push(q);
+                    }
+                });
+
+                // 第二遍遍历，将子题添加到对应的案例背景题中
+                allQuestions.forEach((q: Question) => {
+                    if (q.parent_case_id && caseMap.has(q.parent_case_id)) {
+                        const parent = caseMap.get(q.parent_case_id);
+                        parent.children.push(q);
+                    }
+                });
+
+                // 合并案例背景题和普通题
+                const result = [...caseMap.values(), ...regularQuestions];
+                setPaperQuestions(result);
             }
         } catch (error) {
-            message.error('网络错误');
-            console.error('获取题目网络错误:', error);
+            console.error('获取试卷题目失败:', error);
         }
     };
 
@@ -547,8 +644,24 @@ const PaperManagement: React.FC = () => {
         if (!currentPaperId || selectedQuestions.length === 0) return;
 
         try {
+            // 获取所有选中的题目，包括案例背景题的子题
+            const allSelectedQuestionIds: number[] = [];
+
+            for (const questionId of selectedQuestions) {
+                // 先添加主题目
+                allSelectedQuestionIds.push(questionId);
+
+                // 如果是案例背景题，添加其所有子题
+                const selectedQuestion = questions.find(q => q.id === questionId);
+                if (selectedQuestion && selectedQuestion.type === 'case' && selectedQuestion.children) {
+                    selectedQuestion.children.forEach(child => {
+                        allSelectedQuestionIds.push(child.id);
+                    });
+                }
+            }
+
             // 转换为后端期望的格式
-            const questionsData = selectedQuestions.map(questionId => ({
+            const questionsData = allSelectedQuestionIds.map(questionId => ({
                 question_id: questionId,
                 dimension_id: null // 暂时不设置维度，后续可以扩展
             }));
@@ -966,8 +1079,12 @@ const PaperManagement: React.FC = () => {
                         onClick={async () => {
                             setCurrentPaperId(record.id);
                             setQuestionModalMode('view');
-                            await fetchPaperQuestions(record.id);
-                            await fetchShuffleStatus(record.id);
+                            setShuffleLoading(false); // 重置loading状态
+                            // 并行请求，提高页面加载速度
+                            await Promise.all([
+                                fetchPaperQuestions(record.id),
+                                fetchShuffleStatus(record.id)
+                            ]);
                             setQuestionModalVisible(true);
                         }}
                     >
@@ -1238,6 +1355,296 @@ const PaperManagement: React.FC = () => {
         }
     };
 
+    // 修改renderQuestionItem函数，为案例背景题添加移除按钮
+    const renderQuestionItem = (item: Question, index: number, options: {
+        showCheckbox?: boolean;
+        selectedIds?: number[];
+        onCheckChange?: (id: number, checked: boolean) => void;
+        showActions?: boolean;
+        actions?: React.ReactNode[];
+    } = {}) => {
+        const {
+            showCheckbox = true,
+            selectedIds = selectedQuestions,
+            onCheckChange,
+            showActions = false,
+            actions = []
+        } = options;
+
+        // 判断是否为案例背景题
+        const isCaseQuestion = item.type === 'case';
+
+        // 处理复选框选择
+        const handleCheckChange = (checked: boolean) => {
+            if (onCheckChange) {
+                onCheckChange(item.id, checked);
+            } else {
+                // 默认行为 - 修改selectedQuestions
+                if (checked) {
+                    setSelectedQuestions([...selectedQuestions, item.id]);
+                } else {
+                    setSelectedQuestions(selectedQuestions.filter(id => id !== item.id));
+                }
+            }
+        };
+
+        // 为案例背景题创建移除按钮，点击后同时移除其所有子题
+        const handleRemoveCaseQuestion = (caseItem: Question) => {
+            Modal.confirm({
+                title: '确认移除',
+                content: `该题为案例背景题，包含${caseItem.children?.length || 0}个子题，移除后将同时移除所有子题，是否继续？`,
+                okText: '确认',
+                cancelText: '取消',
+                onOk: async () => {
+                    if (caseItem.children && caseItem.children.length > 0) {
+                        // 先移除所有子题
+                        for (const child of caseItem.children) {
+                            await handleRemovePaperQuestion(child.id);
+                        }
+                    }
+                    // 再移除案例背景题
+                    await handleRemovePaperQuestion(caseItem.id);
+                }
+            });
+        };
+
+        // 为案例背景题创建自定义操作按钮
+        const caseActions = isCaseQuestion ? [
+            <Button
+                type="link"
+                size="small"
+                icon={<DeleteOutlined />}
+                onClick={() => handleRemoveCaseQuestion(item)}
+                danger
+            >
+                移除(含子题)
+            </Button>
+        ] : actions;
+
+        return (
+            <div key={item.id} style={{ marginBottom: '16px', border: '1px solid #f0f0f0', borderRadius: '4px', padding: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                    {showCheckbox && (
+                        <Checkbox
+                            checked={selectedIds.includes(item.id)}
+                            onChange={(e) => handleCheckChange(e.target.checked)}
+                            style={{ marginRight: '12px', marginTop: '4px' }}
+                        />
+                    )}
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
+                            {!isCaseQuestion && `题目${index + 1}: `}<QuestionContentDisplay content={item.content} maxLength={150} />
+                        </div>
+                        <div style={{ color: '#666', fontSize: '12px', marginBottom: '8px' }}>
+                            类型: {
+                                {
+                                    'single': '单选题',
+                                    'multiple': '多选题',
+                                    'indefinite': '不定项',
+                                    'case': '案例背景题'
+                                }[item.type] || item.type
+                            } |
+                            {item.type !== 'case' && `选项数: ${item.options?.length || 0}`}
+                            {item.shuffle_options && (
+                                <Tag color="green" style={{ marginLeft: '8px' }}>选项乱序</Tag>
+                            )}
+                        </div>
+
+                        {/* 案例背景题的子题列表 */}
+                        {isCaseQuestion && item.children && item.children.length > 0 && (
+                            <Collapse ghost>
+                                <Collapse.Panel
+                                    header={<span style={{ color: '#1890ff' }}>包含 {item.children.length} 个子题 (点击展开)</span>}
+                                    key="1"
+                                >
+                                    <List
+                                        size="small"
+                                        dataSource={item.children}
+                                        renderItem={(child, childIndex) => (
+                                            <List.Item
+                                                actions={showActions ? [
+                                                    <Button
+                                                        type="link"
+                                                        size="small"
+                                                        icon={<EditOutlined />}
+                                                        onClick={() => handleEditPaperQuestion(child)}
+                                                    >
+                                                        编辑
+                                                    </Button>,
+                                                    <Button
+                                                        type="link"
+                                                        size="small"
+                                                        icon={<DeleteOutlined />}
+                                                        onClick={() => handleRemovePaperQuestion(child.id)}
+                                                    >
+                                                        移除
+                                                    </Button>
+                                                ] : undefined}
+                                            >
+                                                <div>
+                                                    <div style={{ fontWeight: 'normal' }}>
+                                                        子题{childIndex + 1}: <QuestionContentDisplay content={child.content} maxLength={100} />
+                                                    </div>
+                                                    <div style={{ color: '#666', fontSize: '12px' }}>
+                                                        类型: {
+                                                            {
+                                                                'single': '单选题',
+                                                                'multiple': '多选题',
+                                                                'indefinite': '不定项'
+                                                            }[child.type] || child.type
+                                                        } |
+                                                        选项数: {child.options?.length || 0}
+                                                        {child.shuffle_options && (
+                                                            <Tag color="green" style={{ marginLeft: '8px' }}>选项乱序</Tag>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </List.Item>
+                                        )}
+                                    />
+                                </Collapse.Panel>
+                            </Collapse>
+                        )}
+                    </div>
+
+                    {showActions && (isCaseQuestion ? (
+                        <div style={{ marginLeft: '12px' }}>
+                            {caseActions}
+                        </div>
+                    ) : (
+                        <div style={{ marginLeft: '12px' }}>
+                            {actions}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
+    // 维度匹配的列表展示也需要修改，使用相同的展开/收起逻辑
+    const renderDimensionQuestionItem = (item: Question, index: number) => {
+        // 判断是否为案例背景题
+        const isCaseQuestion = item.type === 'case';
+
+        return (
+            <div key={item.id} style={{ marginBottom: '16px', border: '1px solid #f0f0f0', borderRadius: '4px', padding: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
+                            {!isCaseQuestion && `题目${index + 1}: `}<QuestionContentDisplay content={item.content} maxLength={150} />
+                        </div>
+                        <div style={{ color: '#666', fontSize: '12px', marginBottom: '8px' }}>
+                            类型: {
+                                {
+                                    'single': '单选题',
+                                    'multiple': '多选题',
+                                    'indefinite': '不定项',
+                                    'case': '案例背景题'
+                                }[item.type] || item.type
+                            } |
+                            {item.type !== 'case' && `选项数: ${item.options?.length || 0}`}
+                            {item.shuffle_options && (
+                                <Tag color="green" style={{ marginLeft: '8px' }}>选项乱序</Tag>
+                            )}
+                        </div>
+
+                        {/* 案例背景题的子题列表 */}
+                        {isCaseQuestion && item.children && item.children.length > 0 && (
+                            <Collapse ghost>
+                                <Collapse.Panel
+                                    header={<span style={{ color: '#1890ff' }}>包含 {item.children.length} 个子题 (点击展开)</span>}
+                                    key="1"
+                                >
+                                    <List
+                                        size="small"
+                                        dataSource={item.children}
+                                        renderItem={(child, childIndex) => (
+                                            <List.Item
+                                                actions={[
+                                                    <Button
+                                                        type="link"
+                                                        size="small"
+                                                        icon={<DeleteOutlined />}
+                                                        onClick={() => removeQuestionFromDimension(currentDimensionForQuestion?.id || 0, child.id)}
+                                                    >
+                                                        移除
+                                                    </Button>
+                                                ]}
+                                            >
+                                                <div>
+                                                    <div style={{ fontWeight: 'normal' }}>
+                                                        子题{childIndex + 1}: <QuestionContentDisplay content={child.content} maxLength={100} />
+                                                    </div>
+                                                    <div style={{ color: '#666', fontSize: '12px' }}>
+                                                        类型: {
+                                                            {
+                                                                'single': '单选题',
+                                                                'multiple': '多选题',
+                                                                'indefinite': '不定项'
+                                                            }[child.type] || child.type
+                                                        } |
+                                                        选项数: {child.options?.length || 0}
+                                                    </div>
+                                                </div>
+                                            </List.Item>
+                                        )}
+                                    />
+                                </Collapse.Panel>
+                            </Collapse>
+                        )}
+                    </div>
+
+                    {!isCaseQuestion && (
+                        <Button
+                            type="link"
+                            size="small"
+                            icon={<DeleteOutlined />}
+                            onClick={() => removeQuestionFromDimension(currentDimensionForQuestion?.id || 0, item.id)}
+                        >
+                            移除
+                        </Button>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    // 添加批量删除函数
+    const handleBatchRemovePaperQuestions = async () => {
+        if (!currentPaperId || selectedPaperQuestions.length === 0) {
+            return;
+        }
+
+        Modal.confirm({
+            title: '批量移除题目',
+            content: `确定要移除选中的 ${selectedPaperQuestions.length} 道题目吗？`,
+            okText: '确认',
+            cancelText: '取消',
+            onOk: async () => {
+                try {
+                    // 使用已有的API批量删除题目
+                    const response = await fetch(`http://localhost:8000/papers/${currentPaperId}/questions/`, {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ question_ids: selectedPaperQuestions }),
+                    });
+
+                    if (response.ok) {
+                        message.success(`已成功移除 ${selectedPaperQuestions.length} 道题目`);
+                        setSelectedPaperQuestions([]);
+                        // 刷新题目列表
+                        await fetchPaperQuestions(currentPaperId);
+                    } else {
+                        message.error('移除失败');
+                    }
+                } catch (error) {
+                    console.error('批量移除题目失败:', error);
+                    message.error('移除失败');
+                }
+            }
+        });
+    };
+
     return (
         <div style={{ padding: '24px' }}>
             <Card title="试卷管理" extra={
@@ -1331,6 +1738,8 @@ const PaperManagement: React.FC = () => {
                     setCurrentPaperId(null);
                     setPaperQuestions([]);
                     setQuestionModalMode('view');
+                    setShuffleStatus(null); // 重置乱序状态
+                    setShuffleLoading(false); // 重置加载状态
                     manualQuestionForm.resetFields();
                     setManualOptions(['', '', '', '']);
                     setManualScores([10, 7, 4, 1]);
@@ -1356,78 +1765,104 @@ const PaperManagement: React.FC = () => {
                                     <Button type="dashed" onClick={handleAddCase}>添加案例背景题</Button>
                                 </Space>
                             </div>
+
+                            {/* 添加题目乱序控制区域 */}
+                            {paperQuestions.length > 0 && (
+                                <div style={{ marginBottom: '16px', padding: '16px', backgroundColor: '#f9f9f9', borderRadius: '8px', border: '1px solid #eee' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div>
+                                            <div style={{ marginBottom: '4px' }}>
+                                                <Text strong style={{ fontSize: '16px' }}>题目乱序控制</Text>
+                                                {shuffleStatus?.is_shuffled && shuffleStatus.shuffle_seed && (
+                                                    <Tag color="blue" style={{ marginLeft: '8px' }}>
+                                                        乱序种子: {shuffleStatus.shuffle_seed}
+                                                    </Tag>
+                                                )}
+                                            </div>
+                                            <Text type="secondary">
+                                                启用后，被试者答题时题目将不按原顺序，而是随机打乱顺序展示
+                                            </Text>
+                                        </div>
+                                        <div>
+                                            <Button
+                                                type={shuffleStatus?.is_shuffled ? "default" : "primary"}
+                                                danger={shuffleStatus?.is_shuffled}
+                                                loading={shuffleLoading}
+                                                onClick={() => toggleShuffle(currentPaperId, !shuffleStatus?.is_shuffled)}
+                                                icon={shuffleStatus?.is_shuffled ? <ReloadOutlined /> : null}
+                                            >
+                                                {shuffleStatus?.is_shuffled ? "取消题目乱序" : "启用题目乱序"}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {paperQuestions.length === 0 ? (
                                 <Empty description="暂无题目" />
                             ) : (
                                 <>
                                     {/* 全选功能 */}
                                     <div style={{ marginBottom: '12px', padding: '8px 12px', backgroundColor: '#f5f5f5', borderRadius: '6px' }}>
-                                        <Checkbox
-                                            checked={selectedPaperQuestions.length === paperQuestions.length && paperQuestions.length > 0}
-                                            indeterminate={selectedPaperQuestions.length > 0 && selectedPaperQuestions.length < paperQuestions.length}
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    // 全选
-                                                    setSelectedPaperQuestions(paperQuestions.map(q => q.id));
-                                                } else {
-                                                    // 取消全选
-                                                    setSelectedPaperQuestions([]);
-                                                }
-                                            }}
-                                        >
-                                            全选 ({selectedPaperQuestions.length}/{paperQuestions.length})
-                                        </Checkbox>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <Checkbox
+                                                checked={selectedPaperQuestions.length === paperQuestions.length && paperQuestions.length > 0}
+                                                indeterminate={selectedPaperQuestions.length > 0 && selectedPaperQuestions.length < paperQuestions.length}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        // 全选
+                                                        setSelectedPaperQuestions(paperQuestions.map(q => q.id));
+                                                    } else {
+                                                        // 取消全选
+                                                        setSelectedPaperQuestions([]);
+                                                    }
+                                                }}
+                                            >
+                                                全选 ({selectedPaperQuestions.length}/{paperQuestions.length})
+                                            </Checkbox>
+
+                                            <Button
+                                                type="primary"
+                                                danger
+                                                size="small"
+                                                disabled={selectedPaperQuestions.length === 0}
+                                                onClick={handleBatchRemovePaperQuestions}
+                                            >
+                                                批量移除({selectedPaperQuestions.length})
+                                            </Button>
+                                        </div>
                                     </div>
                                     <List
                                         dataSource={paperQuestions}
-                                        renderItem={(item, index) => (
-                                            <List.Item>
-                                                <div style={{ width: '100%', display: 'flex', alignItems: 'flex-start' }}>
-                                                    <Checkbox
-                                                        checked={selectedPaperQuestions.includes(item.id)}
-                                                        onChange={(e) => {
-                                                            if (e.target.checked) {
-                                                                setSelectedPaperQuestions([...selectedPaperQuestions, item.id]);
-                                                            } else {
-                                                                setSelectedPaperQuestions(selectedPaperQuestions.filter(id => id !== item.id));
-                                                            }
-                                                        }}
-                                                        style={{ marginRight: '12px', marginTop: '4px' }}
-                                                    />
-                                                    <div style={{ flex: 1 }}>
-                                                        <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
-                                                            题目{index + 1}: {item.content}
-                                                        </div>
-                                                        <div style={{ color: '#666', fontSize: '12px' }}>
-                                                            类型: {item.type} | 选项数: {item.options?.length || 0}
-                                                            {item.shuffle_options && (
-                                                                <Tag color="green" style={{ marginLeft: '8px' }}>
-                                                                    选项乱序
-                                                                </Tag>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                    <div style={{ marginLeft: '12px' }}>
-                                                        <Button
-                                                            type="link"
-                                                            size="small"
-                                                            icon={<EditOutlined />}
-                                                            onClick={() => handleEditPaperQuestion(item)}
-                                                        >
-                                                            编辑
-                                                        </Button>
-                                                        <Button
-                                                            type="link"
-                                                            size="small"
-                                                            icon={<DeleteOutlined />}
-                                                            onClick={() => handleRemovePaperQuestion(item.id)}
-                                                        >
-                                                            移除
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            </List.Item>
-                                        )}
+                                        renderItem={(item, index) => renderQuestionItem(item, index, {
+                                            selectedIds: selectedPaperQuestions,
+                                            onCheckChange: (id, checked) => {
+                                                if (checked) {
+                                                    setSelectedPaperQuestions([...selectedPaperQuestions, id]);
+                                                } else {
+                                                    setSelectedPaperQuestions(selectedPaperQuestions.filter(itemId => itemId !== id));
+                                                }
+                                            },
+                                            showActions: true,
+                                            actions: [
+                                                <Button
+                                                    type="link"
+                                                    size="small"
+                                                    icon={<EditOutlined />}
+                                                    onClick={() => handleEditPaperQuestion(item)}
+                                                >
+                                                    编辑
+                                                </Button>,
+                                                <Button
+                                                    type="link"
+                                                    size="small"
+                                                    icon={<DeleteOutlined />}
+                                                    onClick={() => handleRemovePaperQuestion(item.id)}
+                                                >
+                                                    移除
+                                                </Button>
+                                            ]
+                                        })}
                                     />
                                 </>
                             )}
@@ -1487,30 +1922,76 @@ const PaperManagement: React.FC = () => {
                                 ← 返回题目列表
                             </Button>
                         </div>
-                        <Transfer
-                            dataSource={questions.map(q => ({
-                                key: q.id,
-                                title: q.content,
-                                description: `类型: ${q.type}`,
-                            }))}
-                            titles={['可选题目', '已选题目']}
-                            targetKeys={selectedQuestions}
-                            onChange={(targetKeys) => setSelectedQuestions(targetKeys.map(Number))}
-                            render={item => item.title}
-                            listStyle={{
-                                width: 500,
-                                height: 400,
-                            }}
-                        />
-                        <div style={{ marginTop: '20px', textAlign: 'center' }}>
-                            <Space>
-                                <Button onClick={() => setQuestionModalMode('view')}>
-                                    取消
-                                </Button>
-                                <Button type="primary" onClick={handleAddQuestions}>
-                                    添加选中题目
-                                </Button>
-                            </Space>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <div>
+                                <Input.Search
+                                    placeholder="搜索题目内容"
+                                    allowClear
+                                    enterButton="搜索"
+                                    size="large"
+                                    onSearch={(value) => {
+                                        // 简单的内容搜索
+                                        const filtered = questions.filter(q =>
+                                            q.content.toLowerCase().includes(value.toLowerCase())
+                                        );
+                                        setFilteredQuestions(filtered);
+                                    }}
+                                    onChange={(e) => {
+                                        if (!e.target.value) {
+                                            setFilteredQuestions(questions);
+                                        }
+                                    }}
+                                    style={{ marginBottom: '16px' }}
+                                />
+
+                                <Card
+                                    title={`题库题目 (共${filteredQuestions.length}题)`}
+                                    extra={
+                                        <div>
+                                            <Button
+                                                type="primary"
+                                                onClick={() => {
+                                                    // 全选
+                                                    if (selectedQuestions.length === filteredQuestions.length) {
+                                                        setSelectedQuestions([]);
+                                                    } else {
+                                                        setSelectedQuestions(filteredQuestions.map(q => q.id));
+                                                    }
+                                                }}
+                                            >
+                                                {selectedQuestions.length === filteredQuestions.length ? '取消全选' : '全选'}
+                                            </Button>
+                                        </div>
+                                    }
+                                    style={{ maxHeight: '500px', overflowY: 'auto' }}
+                                >
+                                    {filteredQuestions.length > 0 ? (
+                                        <List
+                                            dataSource={filteredQuestions}
+                                            renderItem={(item, index) => renderQuestionItem(item, index)}
+                                            style={{ maxHeight: '400px', overflowY: 'auto' }}
+                                        />
+                                    ) : (
+                                        <Empty description="没有找到题目" />
+                                    )}
+                                </Card>
+                            </div>
+
+                            <div style={{ marginTop: '20px', textAlign: 'right' }}>
+                                <Space>
+                                    <Button onClick={() => setQuestionModalMode('view')}>
+                                        取消
+                                    </Button>
+                                    <Button
+                                        type="primary"
+                                        onClick={handleAddQuestions}
+                                        disabled={selectedQuestions.length === 0}
+                                    >
+                                        添加选中题目({selectedQuestions.length})
+                                    </Button>
+                                </Space>
+                            </div>
                         </div>
                     </div>
                 ) : questionModalMode === 'manual' ? (
@@ -2047,21 +2528,7 @@ const PaperManagement: React.FC = () => {
                     ) : (
                         <List
                             dataSource={matchedQuestions}
-                            renderItem={(item, index) => (
-                                <List.Item
-                                    actions={[
-                                        <Button size="small" danger onClick={() => {
-                                            if (currentDimensionForQuestion) {
-                                                removeQuestionFromDimension(currentDimensionForQuestion.id, item.id);
-                                            }
-                                        }}>
-                                            移除
-                                        </Button>
-                                    ]}
-                                >
-                                    <div style={{ fontWeight: 'bold' }}>题目{index + 1}: {item.content}</div>
-                                </List.Item>
-                            )}
+                            renderItem={(item, index) => renderDimensionQuestionItem(item, index)}
                         />
                     )}
                 </div>
@@ -2091,31 +2558,16 @@ const PaperManagement: React.FC = () => {
                         </div>
                         <List
                             dataSource={availableQuestions}
-                            renderItem={(item, index) => (
-                                <List.Item>
-                                    <div style={{ width: '100%', display: 'flex', alignItems: 'flex-start' }}>
-                                        <Checkbox
-                                            checked={selectedQuestionsForDimension.includes(item.id)}
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setSelectedQuestionsForDimension([...selectedQuestionsForDimension, item.id]);
-                                                } else {
-                                                    setSelectedQuestionsForDimension(selectedQuestionsForDimension.filter(id => id !== item.id));
-                                                }
-                                            }}
-                                            style={{ marginRight: '12px', marginTop: '4px' }}
-                                        />
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
-                                                题目{index + 1}: {item.content}
-                                            </div>
-                                            <div style={{ color: '#666', fontSize: '12px' }}>
-                                                类型: {item.type} | 选项数: {item.options?.length || 0}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </List.Item>
-                            )}
+                            renderItem={(item, index) => renderQuestionItem(item, index, {
+                                selectedIds: selectedQuestionsForDimension,
+                                onCheckChange: (id, checked) => {
+                                    if (checked) {
+                                        setSelectedQuestionsForDimension([...selectedQuestionsForDimension, id]);
+                                    } else {
+                                        setSelectedQuestionsForDimension(selectedQuestionsForDimension.filter(itemId => itemId !== id));
+                                    }
+                                }
+                            })}
                         />
                     </div>
                 )}
@@ -2154,7 +2606,15 @@ const PaperManagement: React.FC = () => {
                         label="题目内容"
                         rules={[{ required: true, message: '请输入题目内容' }]}
                     >
-                        <TextArea rows={4} placeholder="请输入题目内容" />
+                        <Form.Item noStyle shouldUpdate>
+                            {({ getFieldValue }) => (
+                                <RichTextEditor
+                                    value={getFieldValue('content') || ''}
+                                    onChange={value => editQuestionForm.setFieldValue('content', value)}
+                                    placeholder="请输入题目内容，可以直接上传或粘贴图片"
+                                />
+                            )}
+                        </Form.Item>
                     </Form.Item>
 
                     <Form.Item
@@ -2183,8 +2643,9 @@ const PaperManagement: React.FC = () => {
                                 {fields.map((field, idx) => (
                                     <Space key={field.key} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
                                         <Form.Item
-                                            {...field}
+                                            key={`${field.key}`}
                                             name={[field.name]}
+                                            fieldKey={[field.fieldKey]}
                                             rules={[{ required: true, message: '请输入选项内容' }]}
                                         >
                                             <Input placeholder={`选项${String.fromCharCode(65 + idx)}`} style={{ width: 200 }} />
@@ -2309,7 +2770,7 @@ const PaperManagement: React.FC = () => {
                             >
                                 <div>
                                     <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
-                                        题目{index + 1}: {item.content}
+                                        题目{index + 1}: <QuestionContentDisplay content={item.content} maxLength={150} />
                                     </div>
                                     <div style={{ color: '#666', fontSize: '12px' }}>
                                         类型: {item.type} | 选项乱序: {item.shuffle_options ? '是' : '否'} | 选项数: {item.options?.length || 0}
@@ -2338,8 +2799,12 @@ const PaperManagement: React.FC = () => {
                 okText="提交全部"
             >
                 <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontWeight: 600, marginBottom: 8 }}>案例背景（<span style={{ color: '#faad14' }}>若有表格，请插入（）图片</span>）：</div>
-                    <ReactQuill value={caseBackground} onChange={setCaseBackground} theme="snow" modules={quillModules} style={{ minHeight: 120 }} />
+                    <div style={{ fontWeight: 600, marginBottom: 8 }}>案例背景（支持直接粘贴或上传图片）：</div>
+                    <RichTextEditor
+                        value={caseBackground}
+                        onChange={setCaseBackground}
+                        placeholder="请输入案例背景内容，可以直接上传或粘贴图片"
+                    />
                 </div>
                 <Form form={caseForm} layout="vertical">
                     <Form.List name="questions" initialValue={caseQuestions}>
@@ -2349,17 +2814,27 @@ const PaperManagement: React.FC = () => {
                                     <Card key={field.key} style={{ marginBottom: 16 }} title={`子题${qidx + 1}`}
                                         extra={fields.length > 1 ? <MinusCircleOutlined onClick={() => remove(field.name)} /> : null}>
                                         <Form.Item
-                                            {...field}
+                                            key={`${field.key}-content`}
                                             name={[field.name, 'content']}
                                             label="题目内容"
+                                            fieldKey={[field.fieldKey, 'content']}
                                             rules={[{ required: true, message: '请输入题目内容' }]}
                                         >
-                                            <TextArea rows={2} />
+                                            <Form.Item noStyle shouldUpdate>
+                                                {() => (
+                                                    <RichTextEditor
+                                                        value={caseForm.getFieldValue(['questions', field.name, 'content']) || ''}
+                                                        onChange={value => caseForm.setFieldValue(['questions', field.name, 'content'], value)}
+                                                        placeholder="请输入题目内容，可以直接上传或粘贴图片"
+                                                    />
+                                                )}
+                                            </Form.Item>
                                         </Form.Item>
                                         <Form.Item
-                                            {...field}
+                                            key={`${field.key}-type`}
                                             name={[field.name, 'type']}
                                             label="题型"
+                                            fieldKey={[field.fieldKey, 'type']}
                                             rules={[{ required: true, message: '请选择题型' }]}
                                         >
                                             <Select style={{ width: 200 }}>
@@ -2369,9 +2844,10 @@ const PaperManagement: React.FC = () => {
                                             </Select>
                                         </Form.Item>
                                         <Form.Item
-                                            {...field}
+                                            key={`${field.key}-shuffle_options`}
                                             name={[field.name, 'shuffle_options']}
                                             label="选项乱序"
+                                            fieldKey={[field.fieldKey, 'shuffle_options']}
                                             valuePropName="checked"
                                         >
                                             <Checkbox>启用选项乱序</Checkbox>
@@ -2382,15 +2858,17 @@ const PaperManagement: React.FC = () => {
                                                     {optFields.map((opt, idx) => (
                                                         <Space key={opt.key} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
                                                             <Form.Item
-                                                                {...opt}
+                                                                key={`${opt.key}-value`}
                                                                 name={[opt.name, 'value']}
+                                                                fieldKey={[opt.fieldKey, 'value']}
                                                                 rules={[{ required: true, message: '请输入选项内容' }]}
                                                             >
                                                                 <Input placeholder={`选项${String.fromCharCode(65 + idx)}`} style={{ width: 200 }} />
                                                             </Form.Item>
                                                             <Form.Item
-                                                                {...opt}
+                                                                key={`${opt.key}-score`}
                                                                 name={[opt.name, 'score']}
+                                                                fieldKey={[opt.fieldKey, 'score']}
                                                                 rules={[{ required: true, message: '请输入分数' }]}
                                                             >
                                                                 <Input type="number" placeholder="分数" style={{ width: 80 }} />

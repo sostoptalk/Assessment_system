@@ -312,9 +312,85 @@ const Assessment = () => {
         }
     }
 
-    const handleQuestionClick = (index: number) => {
-        setCurrentQuestion(index)
+    // 新增：用于记录每个题目在展平数组中的索引
+    const [flatIndexMap, setFlatIndexMap] = useState<Record<number, number>>({});
+
+    // 更新groupQuestionsByParent函数，增加更清晰的类型定义
+    interface QuestionGroup {
+        type: 'normal' | 'case-group';
+        question?: Question;
+        background?: Question;
+        subQuestions?: Question[];
     }
+
+    function groupQuestionsByParent(questions: Question[]): QuestionGroup[] {
+        const caseMap = new Map();
+        const groups: QuestionGroup[] = [];
+        const indexMap: Record<number, number> = {}; // 记录每个题目ID对应的索引
+
+        // 先找所有case题
+        questions.forEach(q => {
+            if (q.type === 'case') {
+                caseMap.set(q.id, { background: q, subQuestions: [] });
+            }
+        });
+
+        // 再分配子题和普通题
+        questions.forEach(q => {
+            if (q.type !== 'case' && q.parent_case_id) {
+                if (caseMap.has(q.parent_case_id)) {
+                    caseMap.get(q.parent_case_id).subQuestions.push(q);
+                }
+            } else if (q.type !== 'case') {
+                groups.push({ type: 'normal', question: q });
+            }
+        });
+
+        // 合并所有案例组
+        for (const group of caseMap.values()) {
+            groups.push({ type: 'case-group', ...group });
+        }
+
+        // 建立题目ID到展平后索引的映射
+        let flatIndex = 0;
+        for (const group of groups) {
+            if (group.type === 'normal' && group.question) {
+                indexMap[group.question.id] = flatIndex++;
+            } else if (group.type === 'case-group' && group.subQuestions) {
+                for (const subQ of group.subQuestions) {
+                    indexMap[subQ.id] = flatIndex++;
+                }
+            }
+        }
+
+        return groups;
+    }
+
+    // 在useEffect中在分组后建立索引映射
+    useEffect(() => {
+        if (questions.length > 0) {
+            const groups = groupQuestionsByParent(questions);
+            const indexMap: Record<number, number> = {};
+
+            let flatIndex = 0;
+            for (const group of groups) {
+                if (group.type === 'normal' && group.question) {
+                    indexMap[group.question.id] = flatIndex++;
+                } else if (group.type === 'case-group' && group.subQuestions) {
+                    for (const subQ of group.subQuestions) {
+                        indexMap[subQ.id] = flatIndex++;
+                    }
+                }
+            }
+
+            setFlatIndexMap(indexMap);
+        }
+    }, [questions]);
+
+    // 修改题目跳转函数，使用索引映射
+    const handleQuestionClick = (index: number) => {
+        setCurrentQuestion(index);
+    };
 
     const handleSubmit = async () => {
         setSubmitting(true)
@@ -408,6 +484,34 @@ const Assessment = () => {
             message.error('重做申请提交失败');
         }
     };
+
+    // 添加回渲染题目选项的函数
+    // 渲染题目选项（单题/多题）
+    function renderQuestionBlock(q: Question | undefined, value: string[], onChange: (value: string[]) => void) {
+        if (!q) return null;
+        if (q.type === 'single') {
+            return (
+                <Radio.Group value={value[0]} onChange={e => onChange([e.target.value])}>
+                    {q.options?.map(option => (
+                        <Radio key={option.label} value={option.label} style={{ display: 'block', marginBottom: 16 }}>
+                            {option.label}. {option.text}
+                        </Radio>
+                    ))}
+                </Radio.Group>
+            );
+        } else if (q.type === 'multiple' || q.type === 'indefinite') {
+            return (
+                <Checkbox.Group value={value} onChange={onChange}>
+                    {q.options?.map(option => (
+                        <Checkbox key={option.label} value={option.label} style={{ display: 'block', marginBottom: 16 }}>
+                            {option.label}. {option.text}
+                        </Checkbox>
+                    ))}
+                </Checkbox.Group>
+            );
+        }
+        return null;
+    }
 
     const renderQuestion = () => {
         if (!questions.length || currentQuestion >= questions.length) return null
@@ -558,130 +662,126 @@ const Assessment = () => {
 
     // 测试界面
     if (testStarted && selectedAssignment) {
-        // 新增：分组
+        // 分组并创建展平的题目列表（只包含可回答的题目）
         const questionGroups = groupQuestionsByParent(questions);
-        // 调试输出
-        console.log('questions', questions);
-        console.log('questionGroups', questionGroups);
+        const flattenedAnswerableQuestions: Question[] = [];
+
+        // 创建展平的题目列表和建立映射关系
+        questionGroups.forEach(group => {
+            if (group.type === 'normal' && group.question) {
+                flattenedAnswerableQuestions.push(group.question);
+            } else if (group.type === 'case-group' && group.subQuestions) {
+                flattenedAnswerableQuestions.push(...group.subQuestions);
+            }
+        });
+
         // 统计总题数（不含case背景）
-        const totalQuestions = questions.filter(q => q.type !== 'case').length;
+        const totalQuestions = flattenedAnswerableQuestions.length;
+
+        // 当前问题是展平后的索引
+        const currentQ = flattenedAnswerableQuestions[currentQuestion];
+
+        // 判断是否显示提交按钮（到达最后一题）
+        const isLastQuestion = currentQuestion === totalQuestions - 1;
+
         // 统计已答题数
         const answeredQuestions = Object.keys(answers).length;
+
         // 渲染题目导航（只显示可答题）
-        let flatIndex = 0;
-        const navButtons = [];
-        for (let gi = 0; gi < questionGroups.length; gi++) {
-            const g = questionGroups[gi];
-            if (g.type === 'normal' && g.question) {
-                const isAnswered = answers[g.question.id] && answers[g.question.id].length > 0;
-                navButtons.push(
-                    <Button
-                        key={g.question.id}
-                        size="small"
-                        type={flatIndex === currentQuestion ? 'primary' : 'default'}
-                        style={{
-                            backgroundColor: isAnswered ? '#52c41a' : '#f0f0f0',
-                            color: isAnswered ? 'white' : 'black',
-                            border: flatIndex === currentQuestion ? '2px solid #1890ff' : '1px solid #d9d9d9',
-                            margin: 2
-                        }}
-                        onClick={() => setCurrentQuestion(flatIndex)}
-                    >
-                        {flatIndex + 1}
-                    </Button>
-                );
-                flatIndex++;
-            } else if (g.type === 'case-group' && g.subQuestions && g.background) {
-                for (let si = 0; si < g.subQuestions.length; si++) {
-                    const sq = g.subQuestions[si];
-                    const isAnswered = answers[sq.id] && answers[sq.id].length > 0;
-                    navButtons.push(
-                        <Button
-                            key={sq.id}
-                            size="small"
-                            type={flatIndex === currentQuestion ? 'primary' : 'default'}
-                            style={{
-                                backgroundColor: isAnswered ? '#52c41a' : '#f0f0f0',
-                                color: isAnswered ? 'white' : 'black',
-                                border: flatIndex === currentQuestion ? '2px solid #1890ff' : '1px solid #d9d9d9',
-                                margin: 2
-                            }}
-                            onClick={() => setCurrentQuestion(flatIndex)}
-                        >
-                            {flatIndex + 1}
-                        </Button>
-                    );
-                    flatIndex++;
-                }
-            }
-        }
-        // 渲染所有题目内容
-        flatIndex = 0;
-        const contentBlocks = [];
-        for (let gi = 0; gi < questionGroups.length; gi++) {
-            const g = questionGroups[gi];
-            if (g.type === 'normal' && g.question) {
-                contentBlocks.push(
-                    <div key={g.question.id} style={{ marginBottom: 32 }}>
-                        <Title level={4}>题目 {flatIndex + 1}</Title>
-                        <div style={{ fontSize: '16px', lineHeight: 1.6, marginBottom: 24 }}>
-                            <div dangerouslySetInnerHTML={{ __html: g.question.content }} />
-                        </div>
-                        <div style={{ marginBottom: 24 }}>
-                            {renderQuestionBlock(g.question, answers[g.question.id] || [], v => setAnswers(prev => ({ ...prev, [g.question.id]: v })))}
-                        </div>
-                    </div>
-                );
-                flatIndex++;
-            } else if (g.type === 'case-group' && g.subQuestions && g.background) {
-                contentBlocks.push(
-                    <div key={g.background.id} style={{ marginBottom: 32, border: '1px solid #e6f7ff', borderRadius: 8, background: '#f6fbff', padding: 24 }}>
-                        <div style={{ marginBottom: 16 }}>
-                            <Title level={4} style={{ color: '#1890ff' }}>案例背景</Title>
-                            <div style={{ fontSize: '16px', lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: g.background.content }} />
-                        </div>
-                        {g.subQuestions?.map((sq: Question, si: number) => {
-                            const idx = flatIndex + si;
-                            return (
-                                <div key={sq.id} style={{ marginBottom: 32, borderBottom: si < g.subQuestions.length - 1 ? '1px dashed #d9d9d9' : 'none', paddingBottom: 16 }}>
-                                    <Title level={5} style={{ marginTop: 0 }}>子题 {idx + 1}</Title>
-                                    <div style={{ fontSize: '15px', marginBottom: 16 }} dangerouslySetInnerHTML={{ __html: sq.content }} />
-                                    {renderQuestionBlock(sq, answers[sq.id] || [], v => setAnswers(prev => ({ ...prev, [sq.id]: v })))}
-                                </div>
-                            );
-                        })}
-                    </div>
-                );
-                flatIndex += g.subQuestions?.length || 0;
+        const navButtons = flattenedAnswerableQuestions.map((q, index) => {
+            const isAnswered = answers[q.id] && answers[q.id].length > 0;
+            return (
+                <Button
+                    key={q.id}
+                    size="small"
+                    type={index === currentQuestion ? 'primary' : 'default'}
+                    style={{
+                        backgroundColor: isAnswered ? '#52c41a' : '#f0f0f0',
+                        color: isAnswered ? 'white' : 'black',
+                        border: index === currentQuestion ? '2px solid #1890ff' : '1px solid #d9d9d9',
+                        margin: 2
+                    }}
+                    onClick={() => handleQuestionClick(index)}
+                >
+                    {index + 1}
+                </Button>
+            );
+        });
+
+        // 查找当前题目所在的组和背景
+        let currentCaseBackground: Question | null = null;
+        for (const group of questionGroups) {
+            if (group.type === 'case-group' &&
+                group.background &&
+                group.subQuestions &&
+                group.subQuestions.some(q => q.id === currentQ?.id)) {
+                currentCaseBackground = group.background;
+                break;
             }
         }
 
-        // 渲染题目选项（单题/多题）
-        function renderQuestionBlock(q: Question | undefined, value: string[], onChange: (value: string[]) => void) {
-            if (!q) return null;
-            if (q.type === 'single') {
-                return (
-                    <Radio.Group value={value[0]} onChange={e => onChange([e.target.value])}>
-                        {q.options?.map(option => (
-                            <Radio key={option.label} value={option.label} style={{ display: 'block', marginBottom: 16 }}>
-                                {option.label}. {option.text}
-                            </Radio>
-                        ))}
-                    </Radio.Group>
-                );
-            } else if (q.type === 'multiple' || q.type === 'indefinite') {
-                return (
-                    <Checkbox.Group value={value} onChange={onChange}>
-                        {q.options?.map(option => (
-                            <Checkbox key={option.label} value={option.label} style={{ display: 'block', marginBottom: 16 }}>
-                                {option.label}. {option.text}
-                            </Checkbox>
-                        ))}
-                    </Checkbox.Group>
-                );
-            }
-            return null;
-        }
+        // 底部操作按钮组件，确保提交按钮正确显示
+        const bottomButtons = (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 32 }}>
+                <Button
+                    icon={<ArrowLeftOutlined />}
+                    disabled={currentQuestion === 0}
+                    onClick={handlePrev}
+                >
+                    上一题
+                </Button>
+                {isLastQuestion ? (
+                    <Button
+                        type="primary"
+                        loading={submitting}
+                        onClick={handleSubmit}
+                    >
+                        提交测评
+                    </Button>
+                ) : (
+                    <Button
+                        type="primary"
+                        icon={<ArrowRightOutlined />}
+                        onClick={handleNext}
+                    >
+                        下一题
+                    </Button>
+                )}
+            </div>
+        );
+
+        // 渲染当前题目
+        const renderCurrentQuestion = () => {
+            if (!currentQ) return null;
+
+            return (
+                <>
+                    {/* 如果是案例子题，先显示案例背景 */}
+                    {currentCaseBackground && (
+                        <div style={{ marginBottom: 32, border: '1px solid #e6f7ff', borderRadius: 8, background: '#f6fbff', padding: 24 }}>
+                            <div style={{ marginBottom: 16 }}>
+                                <Title level={4} style={{ color: '#1890ff' }}>案例背景</Title>
+                                <div style={{ fontSize: '16px', lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: currentCaseBackground.content }} />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 显示当前题目 */}
+                    <div style={{ marginBottom: 32 }}>
+                        <Title level={4}>题目 {currentQuestion + 1}</Title>
+                        <div style={{ fontSize: '16px', lineHeight: 1.6, marginBottom: 24 }}>
+                            <div dangerouslySetInnerHTML={{ __html: currentQ.content }} />
+                        </div>
+                        <div style={{ marginBottom: 24 }}>
+                            {renderQuestionBlock(currentQ, answers[currentQ.id] || [], v => setAnswers(prev => ({ ...prev, [currentQ.id]: v })))}
+                        </div>
+                    </div>
+
+                    {/* 底部按钮区域 */}
+                    {bottomButtons}
+                </>
+            );
+        };
 
         return (
             <div ref={fullscreenRef} style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -734,34 +834,7 @@ const Assessment = () => {
                         <div style={{ marginBottom: 24 }}>
                             <Progress percent={((currentQuestion + 1) / totalQuestions) * 100} />
                         </div>
-                        {contentBlocks}
-                        {/* 底部操作按钮 */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 32 }}>
-                            <Button
-                                icon={<ArrowLeftOutlined />}
-                                disabled={currentQuestion === 0}
-                                onClick={handlePrev}
-                            >
-                                上一题
-                            </Button>
-                            {currentQuestion === totalQuestions - 1 ? (
-                                <Button
-                                    type="primary"
-                                    loading={submitting}
-                                    onClick={handleSubmit}
-                                >
-                                    提交测评
-                                </Button>
-                            ) : (
-                                <Button
-                                    type="primary"
-                                    icon={<ArrowRightOutlined />}
-                                    onClick={handleNext}
-                                >
-                                    下一题
-                                </Button>
-                            )}
-                        </div>
+                        {renderCurrentQuestion()}
                     </div>
                 </div>
             </div>
