@@ -29,6 +29,16 @@ export default defineConfig({
             '^/(participants|report-templates|dashboard)': {
                 target: 'http://localhost:8000',
                 changeOrigin: true
+            },
+            // 处理上传文件的请求
+            '/upload': {
+                target: 'http://localhost:8000',
+                changeOrigin: true
+            },
+            // 处理静态文件的请求
+            '/uploads': {
+                target: 'http://localhost:8000',
+                changeOrigin: true
             }
         }
     }

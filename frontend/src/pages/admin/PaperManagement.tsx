@@ -23,7 +23,9 @@ import {
     Tree,
     TreeSelect,
     Collapse,
-    Typography
+    Typography,
+    Radio,
+    Spin
 } from 'antd';
 
 const { Text } = Typography;
@@ -39,13 +41,18 @@ import {
     TeamOutlined,
     ReloadOutlined,
     MinusCircleOutlined,
-    UploadOutlined
+    UploadOutlined,
+    PlusCircleOutlined,
+    DownOutlined,
+    DownloadOutlined
 } from '@ant-design/icons';
 import type { TransferDirection } from 'antd/es/transfer';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import QuestionContentDisplay from '../../components/QuestionContentDisplay';
-import RichTextEditor from '../../components/RichTextEditor';
+import SimpleEditor from '../../components/SimpleEditor';
+import { TreeItem } from 'antd/lib/tree-select';
+import { apiService } from '../../utils/api';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -118,12 +125,10 @@ const PaperManagement: React.FC = () => {
     const [assignModalVisible, setAssignModalVisible] = useState(false);
     const [assignPaperId, setAssignPaperId] = useState<number | null>(null);
     const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
-    const [questionModalMode, setQuestionModalMode] = useState<'view' | 'add' | 'manual' | 'import'>('view');
+    const [questionModalMode, setQuestionModalMode] = useState<'view' | 'add'>('view');
     const [selectedPaperQuestions, setSelectedPaperQuestions] = useState<number[]>([]);
     const [manualQuestionForm] = Form.useForm();
     const [importLoading, setImportLoading] = useState(false);
-    const [manualOptions, setManualOptions] = useState(['', '', '', '']);
-    const [manualScores, setManualScores] = useState([10, 7, 4, 1]);
     const [importModalVisible, setImportModalVisible] = useState(false);
     const [importedQuestions, setImportedQuestions] = useState<any[]>([]);
     const [importShuffleOptions, setImportShuffleOptions] = useState(false);
@@ -714,7 +719,11 @@ const PaperManagement: React.FC = () => {
 
     // 编辑试卷题目
     const handleEditPaperQuestion = (question: any) => {
+        // 首先设置编辑状态
         setEditingQuestion(question);
+
+        // 在设置表单值前重置表单
+        editQuestionForm.resetFields();
 
         // 确保options是数组格式
         let options = question.options;
@@ -734,28 +743,36 @@ const PaperManagement: React.FC = () => {
             options = [];
         }
 
-        // 处理options格式：如果是对象数组（包含label、text、score），转换为简单字符串数组
-        let processedOptions: string[] = [];
-        let processedScores: number[] = [];
+        // 处理options格式：如果是对象数组（包含label、text、score），转换为键值对格式
+        let formattedOptions = [];
 
         if (options.length > 0 && typeof options[0] === 'object' && options[0].hasOwnProperty('text')) {
             // 如果是对象数组格式，提取text和score字段
-            processedOptions = options.map((opt: any) => opt.text || '');
-            processedScores = options.map((opt: any) => opt.score || 0);
+            formattedOptions = options.map((opt: any) => ({
+                value: opt.text || '',
+                score: opt.score || 0
+            }));
         } else if (Array.isArray(options)) {
             // 如果是简单字符串数组
-            processedOptions = options;
-            processedScores = question.scores || [];
+            formattedOptions = options.map((opt: string, idx: number) => ({
+                value: opt,
+                score: question.scores && question.scores[idx] !== undefined ? question.scores[idx] : 0
+            }));
         }
 
-        editQuestionForm.setFieldsValue({
-            content: question.content,
-            type: question.type,
-            shuffle_options: question.shuffle_options || false,
-            options: processedOptions,
-            scores: processedScores
-        });
-        setEditQuestionModalVisible(true);
+        // 使用较长的延时确保DOM完全准备好
+        setTimeout(() => {
+            // 为表单字段设置值
+            editQuestionForm.setFieldsValue({
+                content: question.content,
+                type: question.type,
+                shuffle_options: question.shuffle_options || false,
+                options: formattedOptions
+            });
+
+            // 显示模态框
+            setEditQuestionModalVisible(true);
+        }, 200);
     };
 
     // 保存编辑的题目
@@ -764,49 +781,59 @@ const PaperManagement: React.FC = () => {
             // 编辑的是Excel导入预览题目
             const idx = editingQuestion._excelIndex;
             const updated = [...excelImportedQuestions];
+
+            // 从表单中提取选项和分数
+            const options = values.options.map((opt: any) => opt.value);
+            const scores = values.options.map((opt: any) => Number(opt.score));
+
             updated[idx] = {
                 ...updated[idx],
                 content: values.content,
                 type: values.type,
                 shuffle_options: values.shuffle_options,
-                options: values.options,
-                scores: values.scores,
+                options: options,
+                scores: scores,
             };
+
             setExcelImportedQuestions(updated);
             setEditQuestionModalVisible(false);
             setEditingQuestion(null);
             editQuestionForm.resetFields();
             return;
         }
+
         if (!editingQuestion) return;
 
         try {
-            // 确保options和scores是数组格式
-            let options = values.options;
-            let scores = values.scores;
-
-            // 确保是数组
-            if (!Array.isArray(options)) {
-                options = [];
-            }
-            if (!Array.isArray(scores)) {
-                scores = [];
+            // 确保content非空
+            const content = values.content;
+            if (!content || content === '<p><br></p>' || content.trim() === '') {
+                message.error('请输入题目内容');
+                return;
             }
 
-            // 过滤掉空的选项
-            const validOptions = options.filter((opt: string) => opt && opt.trim() !== '');
-            const validScores = scores.slice(0, validOptions.length);
+            // 从表单中提取选项和分数
+            const options = values.options.map((item: any) => item.value);
+            const scores = values.options.map((item: any) => Number(item.score));
 
-            const response = await fetch(`http://localhost:8000/questions/${editingQuestion.id}`, {
+            if (options.length !== scores.length) {
+                message.error('选项数和分数数必须一致');
+                return;
+            }
+
+            // 构建提交数据
+            const requestData = {
+                content: content,
+                type: values.type,
+                options: options,
+                scores: scores,
+                shuffle_options: values.shuffle_options || false
+            };
+
+            const response = await fetch(`/questions/${editingQuestion.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content: values.content,
-                    type: values.type,
-                    options: validOptions,
-                    scores: validScores,
-                    shuffle_options: values.shuffle_options || false
-                }),
+                body: JSON.stringify(requestData),
             });
 
             if (response.ok) {
@@ -831,19 +858,36 @@ const PaperManagement: React.FC = () => {
     const handleManualAddQuestion = async (values: any) => {
         if (!currentPaperId) return;
 
-        const requestData = {
-            content: values.content,
-            type: values.type,
-            options: manualOptions,
-            scores: manualScores,
-            shuffle_options: values.shuffle_options || false
-        };
-
-        console.log('发送的题目数据:', requestData);
-
         try {
+            // 确保content非空
+            const content = values.content;
+            if (!content || content === '<p><br></p>' || content.trim() === '') {
+                message.error('请输入题目内容');
+                return;
+            }
+
+            // 从表单中提取选项和分数
+            const options = values.options.map((item: any) => item.value);
+            const scores = values.options.map((item: any) => Number(item.score));
+
+            if (options.length !== scores.length) {
+                message.error('选项数和分数数必须一致');
+                return;
+            }
+
+            // 构建请求数据
+            const requestData = {
+                content: content,
+                type: values.type,
+                options: options,
+                scores: scores,
+                shuffle_options: values.shuffle_options || false
+            };
+
+            console.log('发送的题目数据:', requestData);
+
             // 先创建题目
-            const createResponse = await fetch('http://localhost:8000/questions', {
+            const createResponse = await fetch('/questions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestData),
@@ -853,7 +897,7 @@ const PaperManagement: React.FC = () => {
                 const newQuestion = await createResponse.json();
 
                 // 将新题目添加到试卷
-                const addResponse = await fetch(`http://localhost:8000/papers/${currentPaperId}/questions/`, {
+                const addResponse = await fetch(`/papers/${currentPaperId}/questions/`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify([{
@@ -1741,8 +1785,6 @@ const PaperManagement: React.FC = () => {
                     setShuffleStatus(null); // 重置乱序状态
                     setShuffleLoading(false); // 重置加载状态
                     manualQuestionForm.resetFields();
-                    setManualOptions(['', '', '', '']);
-                    setManualScores([10, 7, 4, 1]);
                 }}
                 footer={null}
                 width={1200}
@@ -2010,17 +2052,23 @@ const PaperManagement: React.FC = () => {
                             layout="vertical"
                             onFinish={handleManualAddQuestion}
                             initialValues={{
-                                options: ['', '', '', ''],
-                                scores: [10, 7, 4, 1],
-                                shuffle_options: false
+                                type: 'single',
+                                shuffle_options: false,
+                                options: [
+                                    { value: '', score: 10 },
+                                    { value: '', score: 7 },
+                                    { value: '', score: 4 },
+                                    { value: '', score: 1 }
+                                ]
                             }}
                         >
                             <Form.Item
                                 name="content"
                                 label="题目内容"
                                 rules={[{ required: true, message: '请输入题目内容' }]}
+                                valuePropName="value"
                             >
-                                <TextArea rows={4} placeholder="请输入题目内容" />
+                                <SimpleEditor placeholder="请输入题目内容" />
                             </Form.Item>
                             <Form.Item
                                 name="type"
@@ -2043,39 +2091,42 @@ const PaperManagement: React.FC = () => {
                             <Form.Item
                                 name="options"
                                 label="选项"
-                                rules={[{ required: true, message: '请输入选项' }]}
                             >
-                                <div>
-                                    {[0, 1, 2, 3].map((index) => (
-                                        <div key={index} style={{ display: 'flex', marginBottom: '8px', alignItems: 'center' }}>
-                                            <span style={{ width: '30px', marginRight: '8px' }}>
-                                                {String.fromCharCode(65 + index)}.
-                                            </span>
-                                            <Input
-                                                placeholder={`选项${String.fromCharCode(65 + index)}`}
-                                                style={{ flex: 1, marginRight: '8px' }}
-                                                value={manualOptions[index]}
-                                                onChange={(e) => {
-                                                    const newOptions = [...manualOptions];
-                                                    newOptions[index] = e.target.value;
-                                                    setManualOptions(newOptions);
-                                                }}
-                                            />
-                                            <InputNumber
-                                                placeholder="分数"
-                                                min={0}
-                                                max={10}
-                                                style={{ width: '80px' }}
-                                                value={manualScores[index]}
-                                                onChange={(value) => {
-                                                    const newScores = [...manualScores];
-                                                    newScores[index] = value || 0;
-                                                    setManualScores(newScores);
-                                                }}
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
+                                <Form.List name="options" initialValues={[
+                                    { value: '', score: 0 },
+                                    { value: '', score: 0 },
+                                    { value: '', score: 0 },
+                                    { value: '', score: 0 }
+                                ]}>
+                                    {(fields, { add, remove }) => (
+                                        <>
+                                            {fields.map((field, idx) => (
+                                                <Space key={field.key} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
+                                                    <Form.Item
+                                                        key={`${field.key}-value`}
+                                                        name={[field.name, 'value']}
+                                                        fieldKey={[field.fieldKey, 'value']}
+                                                        rules={[{ required: true, message: '请输入选项内容' }]}
+                                                    >
+                                                        <Input placeholder={`选项${String.fromCharCode(65 + idx)}`} style={{ width: 200 }} />
+                                                    </Form.Item>
+                                                    <Form.Item
+                                                        key={`${field.key}-score`}
+                                                        name={[field.name, 'score']}
+                                                        fieldKey={[field.fieldKey, 'score']}
+                                                        rules={[{ required: true, message: '请输入分数' }]}
+                                                    >
+                                                        <InputNumber placeholder="分数" style={{ width: 80 }} />
+                                                    </Form.Item>
+                                                    {fields.length > 2 && (
+                                                        <MinusCircleOutlined onClick={() => remove(field.name)} />
+                                                    )}
+                                                </Space>
+                                            ))}
+                                            <Button type="dashed" onClick={() => add({ value: '', score: 0 })} block icon={<PlusOutlined />}>添加选项</Button>
+                                        </>
+                                    )}
+                                </Form.List>
                             </Form.Item>
                             <Form.Item>
                                 <Space>
@@ -2605,16 +2656,9 @@ const PaperManagement: React.FC = () => {
                         name="content"
                         label="题目内容"
                         rules={[{ required: true, message: '请输入题目内容' }]}
+                        valuePropName="value"
                     >
-                        <Form.Item noStyle shouldUpdate>
-                            {({ getFieldValue }) => (
-                                <RichTextEditor
-                                    value={getFieldValue('content') || ''}
-                                    onChange={value => editQuestionForm.setFieldValue('content', value)}
-                                    placeholder="请输入题目内容，可以直接上传或粘贴图片"
-                                />
-                            )}
-                        </Form.Item>
+                        <SimpleEditor placeholder="请输入题目内容" />
                     </Form.Item>
 
                     <Form.Item
@@ -2643,15 +2687,17 @@ const PaperManagement: React.FC = () => {
                                 {fields.map((field, idx) => (
                                     <Space key={field.key} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
                                         <Form.Item
-                                            key={`${field.key}`}
-                                            name={[field.name]}
-                                            fieldKey={[field.fieldKey]}
+                                            key={`${field.key}-value`}
+                                            name={[field.name, 'value']}
+                                            fieldKey={[field.fieldKey, 'value']}
                                             rules={[{ required: true, message: '请输入选项内容' }]}
                                         >
                                             <Input placeholder={`选项${String.fromCharCode(65 + idx)}`} style={{ width: 200 }} />
                                         </Form.Item>
                                         <Form.Item
-                                            name={['scores', idx]}
+                                            key={`${field.key}-score`}
+                                            name={[field.name, 'score']}
+                                            fieldKey={[field.fieldKey, 'score']}
                                             rules={[{ required: true, message: '请输入分数' }]}
                                         >
                                             <InputNumber placeholder="分数" style={{ width: 80 }} />
@@ -2661,9 +2707,7 @@ const PaperManagement: React.FC = () => {
                                         )}
                                     </Space>
                                 ))}
-                                <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
-                                    添加选项
-                                </Button>
+                                <Button type="dashed" onClick={() => add({ value: '', score: 0 })} block icon={<PlusOutlined />}>添加选项</Button>
                             </>
                         )}
                     </Form.List>
@@ -2800,7 +2844,7 @@ const PaperManagement: React.FC = () => {
             >
                 <div style={{ marginBottom: 16 }}>
                     <div style={{ fontWeight: 600, marginBottom: 8 }}>案例背景（支持直接粘贴或上传图片）：</div>
-                    <RichTextEditor
+                    <SimpleEditor
                         value={caseBackground}
                         onChange={setCaseBackground}
                         placeholder="请输入案例背景内容，可以直接上传或粘贴图片"
@@ -2822,7 +2866,7 @@ const PaperManagement: React.FC = () => {
                                         >
                                             <Form.Item noStyle shouldUpdate>
                                                 {() => (
-                                                    <RichTextEditor
+                                                    <SimpleEditor
                                                         value={caseForm.getFieldValue(['questions', field.name, 'content']) || ''}
                                                         onChange={value => caseForm.setFieldValue(['questions', field.name, 'content'], value)}
                                                         placeholder="请输入题目内容，可以直接上传或粘贴图片"

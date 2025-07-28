@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react'
 import { Card, Button, Table, Modal, Form, Input, Select, message, Space, Tag, Popconfirm, Upload, Spin, Checkbox, List } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, MinusCircleOutlined, DownloadOutlined } from '@ant-design/icons'
 import axios from 'axios'
-import RichTextEditor from '../../components/RichTextEditor'
 import QuestionContentDisplay from '../../components/QuestionContentDisplay'
-import 'react-quill/dist/quill.snow.css'
+import SimpleEditor from '../../components/SimpleEditor'
 import { apiService } from '../../utils/api'
 
 const { Option } = Select
@@ -172,63 +171,90 @@ const QuestionManagement = () => {
 
     // 新增：添加案例背景题
     const handleAddCase = () => {
-        setCaseQuestions([{ content: '', type: 'single', options: [defaultOption(), defaultOption(), defaultOption(), defaultOption()], scores: [0, 0, 0, 0], shuffle_options: false }])
-        setCaseBackground('')
-        setCaseModalVisible(true)
-        caseForm.resetFields()
+        setCaseQuestions([{ content: '', type: 'single', options: [defaultOption(), defaultOption(), defaultOption(), defaultOption()], scores: [0, 0, 0, 0], shuffle_options: false }]);
+        setCaseBackground('');
+        caseForm.resetFields();
+        setTimeout(() => {
+            setCaseModalVisible(true);
+        }, 100);
     }
 
     const handleEdit = (question: Question) => {
-        // First reset the form to clear any previous state
-        form.resetFields();
-        // Then set the editing question
+        // 首先设置编辑状态
         setEditingQuestion(question);
-        // Then set form values
+
+        // 在设置表单值前重置表单
+        form.resetFields();
+
+        // 使用较长的延时确保DOM完全准备好
         setTimeout(() => {
+            // 为表单字段设置值
             form.setFieldsValue({
                 content: question.content,
                 type: question.type,
                 shuffle_options: question.shuffle_options || false,
-                options: question.options.map((v, i) => ({ value: v, score: question.scores[i] ?? 0 }))
+                options: question.options.map((v, i) => ({
+                    value: v,
+                    score: question.scores[i] ?? 0
+                }))
             });
+
+            // 显示模态框
             setModalVisible(true);
-        }, 0);
+        }, 200);
     }
 
     // 新增或编辑题目
     const handleModalOk = async () => {
         try {
-            const values = await form.validateFields()
-            const options = values.options.map((item: any) => item.value)
-            const scores = values.options.map((item: any) => Number(item.score))
+            // 获取当前表单中所有值
+            const values = await form.validateFields();
+
+            // 处理选项和分数
+            const options = values.options.map((item: any) => item.value);
+            const scores = values.options.map((item: any) => Number(item.score));
+
             if (options.length !== scores.length) {
-                message.error('选项数和分数数必须一致')
-                return
+                message.error('选项数和分数数必须一致');
+                return;
             }
+
+            // 确保内容非空
+            const content = values.content;
+            if (!content || content === '<p><br></p>' || content.trim() === '') {
+                message.error('请输入题目内容');
+                return;
+            }
+
+            // 构建提交数据
             const payload = {
-                content: values.content,
+                content,
                 type: values.type,
                 options,
                 scores,
                 shuffle_options: values.shuffle_options || false
-            }
+            };
+
             if (editingQuestion) {
-                await apiService.update('/questions', editingQuestion.id, payload)
-                message.success('编辑成功')
+                await apiService.update('/questions', editingQuestion.id, payload);
+                message.success('编辑成功');
             } else {
-                await apiService.create('/questions/', payload)
-                message.success('添加成功')
+                await apiService.create('/questions/', payload);
+                message.success('添加成功');
             }
-            setModalVisible(false)
-            fetchQuestions()
+
+            setModalVisible(false);
+            form.resetFields(); // 重置表单
+            setEditingQuestion(null); // 清除编辑状态
+            fetchQuestions();
         } catch (e: any) {
             if (e && e.errorFields) {
                 // 表单校验错误，AntD会自动高亮
             } else if (e && e.detail) {
-                message.error('后端错误: ' + e.detail)
+                message.error('后端错误: ' + e.detail);
             } else {
-                message.error('操作失败，请检查网络或输入')
-                console.error('操作失败详情:', e)
+                message.error('操作失败，请检查网络或输入');
+                console.error('操作失败详情:', e);
             }
         }
     }
@@ -236,36 +262,77 @@ const QuestionManagement = () => {
     // 新增：案例背景题提交
     const handleCaseModalOk = async () => {
         try {
-            const values = await caseForm.validateFields()
-            if (!caseBackground || caseBackground.trim() === '') {
-                message.error('请输入案例背景内容')
-                return
+            // 验证子题表单
+            const values = await caseForm.validateFields();
+
+            // 检查案例背景内容
+            if (!caseBackground || caseBackground === '<p><br></p>' || caseBackground.trim() === '') {
+                message.error('请输入案例背景内容');
+                return;
             }
-            // 先保存案例背景题（主表）
-            const res = await apiService.create('/questions/', {
-                content: caseBackground,
-                type: 'case',
-                options: [],
-                scores: [],
-                shuffle_options: false
-            })
-            const caseId = res.id
-            // 组装payload
-            const questions = values.questions.map((q: any) => ({
-                ...q,
-                options: q.options.map((item: any) => item.value),
-                scores: q.options.map((item: any) => Number(item.score)),
-                parent_case_id: caseId
-            }))
-            // 再保存子题
-            for (const q of questions) {
-                await apiService.create('/questions/', q)
+
+            // 检查子题内容
+            for (const q of values.questions) {
+                if (!q.content || q.content === '<p><br></p>' || q.content.trim() === '') {
+                    message.error('请输入所有子题的内容');
+                    return;
+                }
             }
-            message.success('案例背景题添加成功')
-            setCaseModalVisible(false)
-            fetchQuestions()
-        } catch (e) {
-            message.error('添加失败')
+
+            // 显示加载状态
+            message.loading('正在保存案例背景题...', 0);
+
+            try {
+                // 先保存案例背景题（主表）
+                const res = await apiService.create('/questions/', {
+                    content: caseBackground,
+                    type: 'case',
+                    options: [],
+                    scores: [],
+                    shuffle_options: false
+                });
+
+                const caseId = res.id;
+
+                // 组装子题payload
+                const questions = values.questions.map((q: any) => ({
+                    ...q,
+                    options: q.options.map((item: any) => item.value),
+                    scores: q.options.map((item: any) => Number(item.score)),
+                    parent_case_id: caseId
+                }));
+
+                // 保存所有子题
+                for (const q of questions) {
+                    await apiService.create('/questions/', q);
+                }
+
+                // 隐藏加载消息并显示成功消息
+                message.destroy();
+                message.success('案例背景题添加成功');
+
+                // 清理状态
+                setCaseModalVisible(false);
+                setCaseBackground('');
+                setCaseQuestions([]);
+                caseForm.resetFields();
+
+                // 刷新题库列表
+                fetchQuestions();
+            } catch (error) {
+                // 隐藏加载消息并显示错误
+                message.destroy();
+                throw error;
+            }
+        } catch (e: any) {
+            if (e && e.errorFields) {
+                // 表单校验错误，AntD会自动高亮
+            } else if (e && e.detail) {
+                message.error('后端错误: ' + e.detail);
+            } else {
+                message.error('添加失败，请检查网络或输入');
+                console.error('添加失败详情:', e);
+            }
         }
     }
 
@@ -408,22 +475,17 @@ const QuestionManagement = () => {
         window.open('/questionnaire_template.docx');
     };
 
-    // 批量编辑表单内的TextArea修改为RichTextEditor
-    const formItemContent = (form: any, field: any, fieldPath: any[]) => (
-        <Form.Item noStyle shouldUpdate>
-            {() => {
-                const content = form.getFieldValue([...fieldPath, field.name, 'content']) || '';
-                return (
-                    <RichTextEditor
-                        key={`editor-${field.key}`}
-                        value={content}
-                        onChange={value => form.setFieldValue([...fieldPath, field.name, 'content'], value)}
-                        placeholder="请输入题目内容，可以直接上传或粘贴图片"
-                    />
-                );
-            }}
-        </Form.Item>
-    );
+    // 批量编辑表单内的TextArea修改为富文本编辑器
+    const formItemContent = (form: any, field: any, fieldPath: any[]) => {
+        const content = form.getFieldValue([...fieldPath, field.name, 'content']) || '';
+        return (
+            <SimpleEditor
+                value={content}
+                onChange={value => form.setFieldValue([...fieldPath, field.name, 'content'], value)}
+                placeholder="请输入题目内容"
+            />
+        );
+    }
 
     // 修复类型映射中缺少case
     const getTypeText = (type: string): string => {
@@ -592,17 +654,9 @@ const QuestionManagement = () => {
                             name="content"
                             label="题目内容"
                             rules={[{ required: true, message: '请输入题目内容' }]}
+                            valuePropName="value"
                         >
-                            <Form.Item noStyle shouldUpdate>
-                                {({ getFieldValue }) => (
-                                    <RichTextEditor
-                                        key={`editor-${form.getFieldValue('content')}`}
-                                        value={getFieldValue('content') || ''}
-                                        onChange={value => form.setFieldValue('content', value)}
-                                        placeholder="请输入题目内容，可以直接上传或粘贴图片"
-                                    />
-                                )}
-                            </Form.Item>
+                            <SimpleEditor placeholder="请输入题目内容" />
                         </Form.Item>
 
                         <Form.Item
@@ -752,11 +806,10 @@ const QuestionManagement = () => {
                 >
                     <div style={{ marginBottom: 16 }}>
                         <div style={{ fontWeight: 600, marginBottom: 8 }}>案例背景（支持直接粘贴或上传图片）：</div>
-                        <RichTextEditor
-                            key={`editor-${caseBackground}`}
+                        <SimpleEditor
                             value={caseBackground}
                             onChange={setCaseBackground}
-                            placeholder="请输入案例背景内容，可以直接上传或粘贴图片"
+                            placeholder="请输入案例背景内容"
                         />
                     </div>
                     <Form form={caseForm} layout="vertical">
