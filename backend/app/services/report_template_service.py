@@ -5,6 +5,7 @@ from fastapi import HTTPException
 import yaml
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional, List
+from datetime import datetime
 
 from app.models.report_template import ReportTemplate
 from app.schemas.report_template import ReportTemplateCreate, ReportTemplateUpdate
@@ -62,6 +63,15 @@ class ReportTemplateService:
                 raise HTTPException(status_code=404, detail=f"报告模板ID {template_id} 不存在")
             
             print(f"成功获取模板: {template.name}")
+            
+            # 确保config字段是字典，而不是JSON字符串
+            if template.config and isinstance(template.config, str):
+                try:
+                    template.config = json.loads(template.config)
+                except json.JSONDecodeError as e:
+                    print(f"解析config JSON失败: {e}")
+                    template.config = {}  # 解析失败时提供一个空字典
+            
             return template
         except HTTPException:
             raise
@@ -193,12 +203,152 @@ class ReportTemplateService:
                     print(f"JSON解析错误: {e}")
                     config = {}
             
+            # 获取HTML内容，如果不存在则使用默认模板
             html_content = config.get('html_content', '')
             if not html_content:
-                print("错误: 模板HTML内容为空")
-                raise HTTPException(status_code=400, detail="模板HTML内容不能为空")
+                print("警告: 模板HTML内容为空，使用默认模板")
+                html_content = """<!DOCTYPE html>
+<html>
+<head>
+    <title>测评报告预览</title>
+    <meta charset="UTF-8">
+    <style>
+        body { 
+            font-family: Arial, "Microsoft YaHei", sans-serif; 
+            margin: 0; 
+            padding: 0;
+            color: #333;
+            line-height: 1.6;
+            background-color: #f9f9f9;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        .header { 
+            background: linear-gradient(135deg, #6b73ff 0%, #000dff 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 30px;
+            border-radius: 5px;
+        }
+        .content { 
+            padding: 20px;
+        }
+        .score-section {
+            background-color: #f5f5f5;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 30px;
+        }
+        h1 { 
+            margin: 0; 
+            font-size: 28px;
+        }
+        h2 {
+            color: #4a4a4a;
+            border-left: 4px solid #000dff;
+            padding-left: 10px;
+            margin-top: 30px;
+        }
+        .score-card {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .dimension-card {
+            flex: 1;
+            min-width: 200px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 15px;
+            border-top: 3px solid #000dff;
+        }
+        .dimension-name {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .dimension-score {
+            font-size: 24px;
+            color: #000dff;
+            font-weight: bold;
+        }
+        .chart-section {
+            margin: 30px 0;
+            text-align: center;
+        }
+        .chart-image {
+            max-width: 100%;
+            height: auto;
+        }
+        .evaluation {
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            font-size: 12px;
+            color: #888;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{{user_info.name}} 的测评报告</h1>
+            <p>综合得分: {{user_info.total_score}}</p>
+        </div>
+        
+        <div class="content">
+            <div class="score-section">
+                <h2>维度评分概览</h2>
+                <div class="score-card">
+                    {% for dim_name, dim in dimensions.items() %}
+                    <div class="dimension-card">
+                        <div class="dimension-name">{{dim_name}}</div>
+                        <div class="dimension-score">{{dim.score}}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <div class="chart-section">
+                <h2>能力雷达图</h2>
+                <img class="chart-image" src="{{chart_img}}" alt="能力雷达图">
+            </div>
+            
+            <h2>综合评价</h2>
+            <div class="evaluation">
+                <p>{{performance_eval.summary}}</p>
+            </div>
+            
+            <h2>发展建议</h2>
+            <div class="evaluation">
+                <p>{{performance_eval.development_focus}}</p>
+            </div>
+            
+            <div class="footer">
+                <p>此报告由智能评测系统生成 &copy; {{now.year}} 测评系统</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>"""
             
             print(f"HTML内容长度: {len(html_content)}")
+            print(f"HTML内容预览: {html_content[:100]}..." if len(html_content) > 100 else html_content)
             with open(temp_template_path, 'w', encoding='utf-8') as f:
                 f.write(html_content)
             
@@ -211,6 +361,38 @@ class ReportTemplateService:
             print(f"YAML配置长度: {len(yaml_config)}")
             with open(temp_config_path, 'w', encoding='utf-8') as f:
                 f.write(yaml_config)
+            
+            # 创建测试数据（默认值）
+            if test_data is None:
+                # 创建预览用的测试数据，确保dimensions是字典而不是列表
+                test_data = {
+                    "user_info": {
+                        "name": "测试用户",
+                        "total_score": 7.8,
+                        "department": "产品部",
+                        "position": "产品经理",
+                        "test_date": datetime.now().strftime("%Y-%m-%d")
+                    },
+                    "dimensions": {
+                        "学习能力": {"score": 8.5, "subs": {"学习动机": 8.7, "信息获取": 8.3, "知识应用": 8.5}},
+                        "沟通协作": {"score": 7.2, "subs": {"表达能力": 7.5, "倾听能力": 6.9, "团队合作": 7.2}},
+                        "创新思维": {"score": 8.1, "subs": {"发散思维": 8.3, "问题解决": 7.9, "创新实践": 8.1}},
+                        "执行力": {"score": 7.6, "subs": {"计划制定": 7.8, "行动效率": 7.4, "结果导向": 7.6}}
+                    },
+                    "performance_eval": {
+                        "summary": "该候选人整体表现良好，展现出较强的学习能力和创新思维。学习能力方面表现突出，善于获取信息并灵活应用知识，能够快速适应新环境和新任务的要求。创新思维富有活力，能提出有创意的解决方案。沟通协作与执行力表现稳定，但在倾听能力方面仍有提升空间。",
+                        "development_focus": "建议重点提升沟通中的倾听能力，加强与团队成员的互动与反馈；同时可进一步强化执行过程中的效率管理，建立更清晰的工作优先级，确保在保证质量的前提下提高整体执行效率。"
+                    },
+                    "strengths": {
+                        "学习能力": {"score": 8.5, "details": "学习吸收新知识快，善于将理论应用到实践中"},
+                        "创新思维": {"score": 8.1, "details": "能够提出创新性解决方案，思考问题有独特视角"}
+                    },
+                    "weaknesses": {
+                        "倾听能力": {"score": 6.9, "details": "在团队讨论中有时倾向于表达而非倾听"},
+                        "行动效率": {"score": 7.4, "details": "在压力下工作效率有所波动"}
+                    },
+                    "chart_img": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+                }
                 
             try:
                 print("调用生成预览HTML函数")
@@ -249,13 +431,15 @@ class ReportTemplateService:
         <h2>错误信息:</h2>
         <p>{str(e)}</p>
     </div>
+    <h3>错误堆栈:</h3>
+    <pre>{traceback.format_exc()}</pre>
     <h3>可能的原因:</h3>
     <ul>
         <li>YAML配置格式错误</li>
         <li>HTML模板语法错误</li>
         <li>模板变量未定义</li>
     </ul>
-    <p>请检查并修正配置后重试。</p>
+    <p>请检查配置和模板是否正确。</p>
 </body>
 </html>"""
         except Exception as e:

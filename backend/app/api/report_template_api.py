@@ -90,25 +90,102 @@ async def preview_report_template(template_data: Dict[str, Any] = Body(...)):
         
         if not preview_html or not isinstance(preview_html, str):
             print(f"预览生成失败: 返回内容类型 {type(preview_html)}")
-            raise HTTPException(
-                status_code=500, 
-                detail="生成预览失败：无效的HTML内容"
-            )
+            preview_html = """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>预览生成失败</title>
+</head>
+<body>
+    <h1>预览生成失败：无效的HTML内容</h1>
+</body>
+</html>"""
+        
+        # 检查HTML内容是否太短（可能是无效内容）
+        if len(preview_html) < 200:  # 如果返回的HTML内容太短
+            print(f"警告: 返回的HTML内容太短({len(preview_html)}字符)，可能无法正常显示，使用备用HTML")
+            preview_html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>报告预览</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 40px; }}
+        h1 {{ color: #333; }}
+        .container {{ 
+            border: 1px solid #ddd; 
+            padding: 20px; 
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }}
+        .highlight {{ 
+            background-color: #e1f5fe; 
+            padding: 10px; 
+            margin: 20px 0;
+            border-left: 4px solid #03a9f4;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>测评报告预览</h1>
+        <p>这是一个测试报告预览，原始HTML内容长度为: {len(preview_html)}字符</p>
+        
+        <div class="highlight">
+            <h2>预览内容示例</h2>
+            <p>姓名: 测试用户</p>
+            <p>总分: 7.8</p>
+            <p>评价: 表现良好，具备发展潜力</p>
+        </div>
+        
+        <h3>原始HTML内容:</h3>
+        <pre>{preview_html}</pre>
+    </div>
+</body>
+</html>"""
         
         # 返回HTML响应
         from fastapi.responses import HTMLResponse
         print(f"预览生成成功，内容长度: {len(preview_html)}")
         return HTMLResponse(content=preview_html, media_type="text/html")
+        
     except HTTPException:
         raise
     except Exception as e:
         import traceback
         print(f"生成预览失败: {str(e)}")
         print(traceback.format_exc())
-        raise HTTPException(
-            status_code=500,
-            detail=f"生成预览失败: {str(e)}"
-        )
+        
+        # 返回错误HTML而不是抛出异常
+        from fastapi.responses import HTMLResponse
+        error_html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>预览生成错误</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 40px; }}
+        h1 {{ color: #d32f2f; }}
+        .error {{ 
+            background-color: #ffebee; 
+            padding: 20px; 
+            border-left: 4px solid #d32f2f;
+            margin: 20px 0;
+        }}
+        pre {{ background: #f5f5f5; padding: 10px; overflow: auto; }}
+    </style>
+</head>
+<body>
+    <h1>报告预览生成失败</h1>
+    <div class="error">
+        <h2>错误信息:</h2>
+        <p>{str(e)}</p>
+    </div>
+    <h3>错误堆栈:</h3>
+    <pre>{traceback.format_exc()}</pre>
+</body>
+</html>"""
+        return HTMLResponse(content=error_html, media_type="text/html")
 
 @router.get("/paper/{paper_id}", response_model=List[ReportTemplateResponse])
 async def get_templates_by_paper(paper_id: int, db: Session = Depends(get_db)):

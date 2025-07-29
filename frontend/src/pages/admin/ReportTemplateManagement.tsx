@@ -69,6 +69,7 @@ interface ReportTemplate {
     created_at?: string;
     updated_at?: string;
     yaml_config?: string;
+    config?: any; // 确保包含config字段
 }
 
 interface ComponentItem {
@@ -216,26 +217,47 @@ const ReportTemplateManagement: React.FC = () => {
     };
 
     // YAML转换为表单值
-    const yamlToForm = () => {
+    const yamlToForm = (yamlString?: string) => {
         try {
-            if (!yamlContent) return;
+            // 如果传入了YAML字符串，使用它；否则使用状态中的yamlContent
+            const yamlToProcess = yamlString || yamlContent;
+            if (!yamlToProcess) return;
 
-            const values = yaml.load(yamlContent) as any;
+            console.log('正在将YAML转换为表单数据');
+            const values = yaml.load(yamlToProcess) as any;
+            console.log('解析YAML得到的数据:', values);
 
-            form.setFieldsValue({
-                ...values,
+            if (!values) {
+                console.log('YAML解析结果为空');
+                return;
+            }
+
+            // 准备要设置的表单数据
+            const formData: any = {
+                // 基本信息
+                name: values.name,
+                paper_id: values.paper_id,
+                title: values.title,
+                introduction: values.introduction,
+                conclusion: values.conclusion,
+
+                // 各种配置
                 template: values.template || {},
                 dimensions: values.dimensions || {},
                 dimension_evaluations: values.dimension_evaluations || {},
                 score_levels: values.score_levels || []
-            });
+            };
+
+            // 填充表单
+            console.log('设置表单值:', formData);
+            form.setFieldsValue(formData);
 
             // 如果有paper_id，获取相应的维度
             if (values.paper_id) {
                 fetchDimensions(values.paper_id);
             }
         } catch (error) {
-            console.error('Failed to parse YAML:', error);
+            console.error('解析YAML失败:', error);
             message.error('解析YAML失败，请检查格式');
         }
     };
@@ -324,7 +346,7 @@ const ReportTemplateManagement: React.FC = () => {
         try {
             setPreviewLoading(true);
 
-            // 默认请求数据，确保始终有config字段
+            // 默认请求数据，确保始终有config字段和html_content
             let requestData: any = {
                 config: {
                     html_content: '<!DOCTYPE html><html><body><h1>模板内容</h1></body></html>'
@@ -344,14 +366,32 @@ const ReportTemplateManagement: React.FC = () => {
 
                     if (templateDetail && templateDetail.config) {
                         console.log('成功获取模板配置');
-                        const templateConfig = typeof templateDetail.config === 'string'
-                            ? JSON.parse(templateDetail.config)
-                            : templateDetail.config;
+
+                        // 解析配置，确保包含html_content
+                        let templateConfig: any = {};
+                        if (typeof templateDetail.config === 'string') {
+                            try {
+                                templateConfig = JSON.parse(templateDetail.config);
+                            } catch (e) {
+                                console.error('解析模板配置失败:', e);
+                                templateConfig = {};
+                            }
+                        } else {
+                            templateConfig = templateDetail.config;
+                        }
+
+                        // 确保配置中包含html_content
+                        if (!templateConfig.html_content) {
+                            console.log('配置中缺少html_content，使用默认值');
+                            templateConfig.html_content = '<!DOCTYPE html><html><body><h1>模板内容</h1></body></html>';
+                        }
 
                         requestData = {
                             config: templateConfig,
                             yaml_config: templateDetail.yaml_config || ''
                         };
+
+                        console.log('预览请求使用的html_content长度:', templateConfig.html_content?.length);
                     } else {
                         console.log('模板配置为空，使用模板ID作为备用');
                         requestData.template_id = templateId;
@@ -405,6 +445,15 @@ const ReportTemplateManagement: React.FC = () => {
                 }
             }
 
+            // 最后检查确保请求数据中包含html_content
+            if (!requestData.config?.html_content) {
+                console.log('最终请求数据中缺少html_content，添加默认值');
+                if (!requestData.config) {
+                    requestData.config = {};
+                }
+                requestData.config.html_content = '<!DOCTYPE html><html><body><h1>模板内容</h1></body></html>';
+            }
+
             console.log("发送预览请求:", requestData);
 
             // 使用axios直接请求，确保正确处理响应内容
@@ -418,6 +467,7 @@ const ReportTemplateManagement: React.FC = () => {
 
             const responseHtml = response.data;  // 使用不同的变量名避免覆盖
             console.log("收到预览响应, 内容长度:", responseHtml.length);
+            console.log("预览响应的前100个字符:", responseHtml.substring(0, 100));
 
             // 设置预览HTML内容
             setPreviewUrl(responseHtml);
@@ -502,42 +552,75 @@ const ReportTemplateManagement: React.FC = () => {
 
     // 编辑模板
     const handleEdit = async (template: ReportTemplate) => {
-        setCurrentTemplate(template);
-
-        // 获取维度
-        await fetchDimensions(template.paper_id);
-
-        // 填充表单
-        form.setFieldsValue({
-            name: template.name,
-            paper_id: template.paper_id,
-            title: template.title,
-            introduction: template.introduction,
-            conclusion: template.conclusion,
-            dimensions: template.dimensions,
-            charts: template.charts
-        });
-
-        // 设置YAML内容
-        setYamlContent(template.yaml_config || '');
-
-        // 尝试从config中提取html_content
         try {
-            if (typeof template.config === 'string') {
-                const config = JSON.parse(template.config);
-                if (config && config.html_content) {
-                    setHtmlContent(config.html_content);
-                }
-            } else if (template.config && template.config.html_content) {
-                setHtmlContent(template.config.html_content);
-            }
-        } catch (error) {
-            console.error('Failed to parse template config:', error);
-            setHtmlContent('');
-        }
+            // 先获取完整的模板详情，包括config和yaml_config
+            const templateDetail = await apiService.getDetail('/report-templates', template.id!);
+            console.log('获取到完整模板详情:', templateDetail);
 
-        setActiveTab('basic');
-        setModalVisible(true);
+            // 使用获取到的完整模板数据
+            setCurrentTemplate(templateDetail);
+
+            // 获取维度
+            await fetchDimensions(templateDetail.paper_id);
+
+            // 设置YAML内容
+            const yamlString = templateDetail.yaml_config || '';
+            setYamlContent(yamlString);
+
+            // 解析YAML并填充表单
+            try {
+                if (yamlString) {
+                    console.log('正在解析YAML内容并填充表单');
+                    // 使用封装好的yamlToForm函数解析并填充表单
+                    yamlToForm(yamlString);
+                } else {
+                    // 如果没有YAML内容，只填充基本信息
+                    const formData = {
+                        name: templateDetail.name || '',
+                        paper_id: templateDetail.paper_id,
+                    };
+                    form.setFieldsValue(formData);
+                }
+            } catch (error) {
+                console.error('解析YAML失败:', error);
+                message.error('YAML解析失败，请检查格式');
+
+                // 填充基本表单数据
+                form.setFieldsValue({
+                    name: templateDetail.name || '',
+                    paper_id: templateDetail.paper_id
+                });
+            }
+
+            // 处理HTML内容
+            let htmlContent = '';
+            try {
+                const config = templateDetail.config;
+                if (config) {
+                    if (typeof config === 'string') {
+                        try {
+                            const parsedConfig = JSON.parse(config);
+                            htmlContent = parsedConfig.html_content || '';
+                        } catch (e) {
+                            console.error('解析config字符串失败:', e);
+                        }
+                    } else if (typeof config === 'object') {
+                        htmlContent = config.html_content || '';
+                    }
+                }
+                setHtmlContent(htmlContent);
+                console.log('已设置HTML内容，长度:', htmlContent.length);
+            } catch (error) {
+                console.error('处理模板HTML内容失败:', error);
+                setHtmlContent('');
+            }
+
+            setActiveTab('basic');
+            setModalVisible(true);
+        } catch (error) {
+            console.error('获取模板详情失败:', error);
+            message.error('获取模板详情失败');
+        }
     };
 
     // 新建模板
@@ -1027,7 +1110,7 @@ const ReportTemplateManagement: React.FC = () => {
                                     <Space>
                                         <Button onClick={validateYaml}>验证YAML</Button>
                                         <Button onClick={formatYaml}>格式化</Button>
-                                        <Button onClick={yamlToForm}>同步到表单</Button>
+                                        <Button onClick={() => yamlToForm()}>同步到表单</Button>
                                     </Space>
                                 </div>
                                 <div style={{ border: '1px solid #d9d9d9', borderRadius: '2px' }}>
@@ -1091,10 +1174,26 @@ const ReportTemplateManagement: React.FC = () => {
                                         <Spin tip="生成预览中..." />
                                     </div>
                                 ) : previewUrl ? (
-                                    <div
-                                        style={{ width: '100%', height: '100%' }}
-                                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewUrl) }}
-                                    />
+                                    <>
+                                        <div style={{ marginBottom: '10px' }}>
+                                            <Button
+                                                type="primary"
+                                                onClick={() => window.open(URL.createObjectURL(new Blob([previewUrl], { type: 'text/html' })))}
+                                            >
+                                                在新窗口打开
+                                            </Button>
+                                        </div>
+                                        <iframe
+                                            srcDoc={previewUrl}
+                                            style={{
+                                                width: '100%',
+                                                height: 'calc(100% - 40px)',
+                                                border: '1px solid #d9d9d9',
+                                                borderRadius: '2px'
+                                            }}
+                                            title="报告预览"
+                                        />
+                                    </>
                                 ) : (
                                     <div style={{ textAlign: 'center', padding: '100px 0' }}>
                                         <Text type="secondary">点击"生成预览"按钮查看报告效果</Text>

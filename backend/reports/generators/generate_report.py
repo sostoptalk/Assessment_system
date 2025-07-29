@@ -320,10 +320,24 @@ def generate_preview_html(config_path, template_path, test_data=None):
         
         # 如果没有提供测试数据，创建模拟数据
         if not test_data:
+            print("使用配置生成测试数据")
             test_data = generate_mock_data(config)
+        else:
+            print(f"使用提供的测试数据: {type(test_data)}")
+            print(f"测试数据中的键: {test_data.keys() if isinstance(test_data, dict) else 'Not a dict'}")
+            if "dimensions" in test_data:
+                print(f"维度数据类型: {type(test_data['dimensions'])}")
+                if isinstance(test_data["dimensions"], list):
+                    print(f"维度列表长度: {len(test_data['dimensions'])}")
+                elif isinstance(test_data["dimensions"], dict):
+                    print(f"维度字典键数量: {len(test_data['dimensions'].keys())}")
         
         # 处理测试数据，适配模板
         processed_data = prepare_report_data(test_data)
+        print(f"处理后的维度数据类型: {type(processed_data['dimensions'])}")
+        
+        # 添加当前日期时间信息
+        processed_data['now'] = datetime.now()
         
         # 创建雷达图（如果配置中需要）
         try:
@@ -338,8 +352,7 @@ def generate_preview_html(config_path, template_path, test_data=None):
                 radar_data = convert_to_radar_data(processed_data["dimensions"])
                 chart_path = generate_radar_chart(
                     radar_data, 
-                    chart_path,
-                    config.get("radar_chart", {})
+                    chart_path
                 )
                 
                 # 将图片转换为base64嵌入
@@ -364,70 +377,21 @@ def generate_preview_html(config_path, template_path, test_data=None):
         env.filters['get_top_strength'] = get_top_strength
         env.filters['get_main_weakness'] = get_main_weakness
         
-        # 尝试直接从字符串加载模板
-        try:
-            template = env.from_string(template_content)
-        except Exception as e:
-            print(f"从字符串加载模板失败: {str(e)}")
-            # 尝试使用文件名加载
-            try:
-                template = env.get_template(os.path.basename(template_path))
-            except Exception as e:
-                print(f"无法加载模板: {str(e)}")
-                return f"""<!DOCTYPE html>
-<html>
-<head>
-    <title>模板语法错误</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; }}
-        .error {{ color: red; padding: 10px; border: 1px solid red; border-radius: 5px; }}
-        pre {{ background: #f8f8f8; padding: 10px; overflow: auto; }}
-    </style>
-</head>
-<body>
-    <h1>模板语法错误</h1>
-    <div class="error">
-        <p>{str(e)}</p>
-    </div>
-    <pre>{template_content[:200]}...</pre>
-</body>
-</html>"""
-        
         # 渲染模板
-        try:
-            html_content = template.render(**processed_data)
-            print(f"模板渲染成功，HTML长度: {len(html_content)}")
-            return html_content
-        except Exception as e:
-            print(f"模板渲染失败: {str(e)}")
-            import traceback
-            error_trace = traceback.format_exc()
-            return f"""<!DOCTYPE html>
-<html>
-<head>
-    <title>模板渲染错误</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; }}
-        .error {{ color: red; padding: 10px; border: 1px solid red; border-radius: 5px; }}
-        pre {{ background: #f8f8f8; padding: 10px; overflow: auto; }}
-    </style>
-</head>
-<body>
-    <h1>模板渲染错误</h1>
-    <div class="error">
-        <h2>错误信息:</h2>
-        <p>{str(e)}</p>
-    </div>
-    <h3>错误堆栈:</h3>
-    <pre>{error_trace}</pre>
-</body>
-</html>"""
+        template = env.from_string(template_content)
+        html_output = template.render(**processed_data)
+        
+        # 添加更多调试信息
+        print(f"渲染后HTML长度: {len(html_output)}")
+        print(f"渲染后HTML前100字符: {html_output[:100]}...")
+        
+        return html_output
     
     except Exception as e:
         import traceback
-        error_trace = traceback.format_exc()
-        print(f"预览生成过程中出错: {str(e)}")
-        print(error_trace)
+        print(f"生成预览时出错: {str(e)}")
+        print(traceback.format_exc())
+        
         return f"""<!DOCTYPE html>
 <html>
 <head>
@@ -435,7 +399,7 @@ def generate_preview_html(config_path, template_path, test_data=None):
     <style>
         body {{ font-family: Arial, sans-serif; margin: 20px; }}
         .error {{ color: red; padding: 10px; border: 1px solid red; border-radius: 5px; }}
-        pre {{ background: #f8f8f8; padding: 10px; overflow: auto; max-height: 300px; }}
+        pre {{ background: #f8f8f8; padding: 10px; overflow: auto; }}
     </style>
 </head>
 <body>
@@ -445,7 +409,7 @@ def generate_preview_html(config_path, template_path, test_data=None):
         <p>{str(e)}</p>
     </div>
     <h3>错误堆栈:</h3>
-    <pre>{error_trace}</pre>
+    <pre>{traceback.format_exc()}</pre>
     <p>请检查配置和模板是否正确。</p>
 </body>
 </html>"""
@@ -1169,6 +1133,22 @@ def prepare_report_data(report_data):
     data["performance_eval"] = performance_eval
     data["dimension_evaluations"] = {}
 
+    # 检查dimensions是列表还是字典，并进行适当转换
+    dimensions = data["dimensions"]
+    if isinstance(dimensions, list):
+        print("将dimensions从列表转换为字典格式")
+        # 将列表格式转换为字典格式
+        dimensions_dict = {}
+        for dim in dimensions:
+            # 如果是列表中的项目，确保有name和score字段
+            if "name" in dim and "score" in dim:
+                dimensions_dict[dim["name"]] = {
+                    "score": dim["score"],
+                    "subs": dim.get("subs", {})
+                }
+        data["dimensions"] = dimensions_dict
+    
+    # 现在处理维度数据（确保是字典格式）
     for dim_name, dim_data in data["dimensions"].items():
         score = dim_data["score"]
         eval_data = get_dimension_evaluation(dim_name, score)
@@ -1608,10 +1588,24 @@ def generate_preview_html(config_path, template_path, test_data=None):
         
         # 如果没有提供测试数据，创建模拟数据
         if not test_data:
+            print("使用配置生成测试数据")
             test_data = generate_mock_data(config)
+        else:
+            print(f"使用提供的测试数据: {type(test_data)}")
+            print(f"测试数据中的键: {test_data.keys() if isinstance(test_data, dict) else 'Not a dict'}")
+            if "dimensions" in test_data:
+                print(f"维度数据类型: {type(test_data['dimensions'])}")
+                if isinstance(test_data["dimensions"], list):
+                    print(f"维度列表长度: {len(test_data['dimensions'])}")
+                elif isinstance(test_data["dimensions"], dict):
+                    print(f"维度字典键数量: {len(test_data['dimensions'].keys())}")
         
         # 处理测试数据，适配模板
         processed_data = prepare_report_data(test_data)
+        print(f"处理后的维度数据类型: {type(processed_data['dimensions'])}")
+        
+        # 添加当前日期时间信息
+        processed_data['now'] = datetime.now()
         
         # 创建雷达图（如果配置中需要）
         try:
@@ -1626,8 +1620,7 @@ def generate_preview_html(config_path, template_path, test_data=None):
                 radar_data = convert_to_radar_data(processed_data["dimensions"])
                 chart_path = generate_radar_chart(
                     radar_data, 
-                    chart_path,
-                    config.get("radar_chart", {})
+                    chart_path
                 )
                 
                 # 将图片转换为base64嵌入
@@ -1652,70 +1645,21 @@ def generate_preview_html(config_path, template_path, test_data=None):
         env.filters['get_top_strength'] = get_top_strength
         env.filters['get_main_weakness'] = get_main_weakness
         
-        # 尝试直接从字符串加载模板
-        try:
-            template = env.from_string(template_content)
-        except Exception as e:
-            print(f"从字符串加载模板失败: {str(e)}")
-            # 尝试使用文件名加载
-            try:
-                template = env.get_template(os.path.basename(template_path))
-            except Exception as e:
-                print(f"无法加载模板: {str(e)}")
-                return f"""<!DOCTYPE html>
-<html>
-<head>
-    <title>模板语法错误</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; }}
-        .error {{ color: red; padding: 10px; border: 1px solid red; border-radius: 5px; }}
-        pre {{ background: #f8f8f8; padding: 10px; overflow: auto; }}
-    </style>
-</head>
-<body>
-    <h1>模板语法错误</h1>
-    <div class="error">
-        <p>{str(e)}</p>
-    </div>
-    <pre>{template_content[:200]}...</pre>
-</body>
-</html>"""
-        
         # 渲染模板
-        try:
-            html_content = template.render(**processed_data)
-            print(f"模板渲染成功，HTML长度: {len(html_content)}")
-            return html_content
-        except Exception as e:
-            print(f"模板渲染失败: {str(e)}")
-            import traceback
-            error_trace = traceback.format_exc()
-            return f"""<!DOCTYPE html>
-<html>
-<head>
-    <title>模板渲染错误</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; }}
-        .error {{ color: red; padding: 10px; border: 1px solid red; border-radius: 5px; }}
-        pre {{ background: #f8f8f8; padding: 10px; overflow: auto; }}
-    </style>
-</head>
-<body>
-    <h1>模板渲染错误</h1>
-    <div class="error">
-        <h2>错误信息:</h2>
-        <p>{str(e)}</p>
-    </div>
-    <h3>错误堆栈:</h3>
-    <pre>{error_trace}</pre>
-</body>
-</html>"""
+        template = env.from_string(template_content)
+        html_output = template.render(**processed_data)
+        
+        # 添加更多调试信息
+        print(f"渲染后HTML长度: {len(html_output)}")
+        print(f"渲染后HTML前100字符: {html_output[:100]}...")
+        
+        return html_output
     
     except Exception as e:
         import traceback
-        error_trace = traceback.format_exc()
-        print(f"预览生成过程中出错: {str(e)}")
-        print(error_trace)
+        print(f"生成预览时出错: {str(e)}")
+        print(traceback.format_exc())
+        
         return f"""<!DOCTYPE html>
 <html>
 <head>
@@ -1723,7 +1667,7 @@ def generate_preview_html(config_path, template_path, test_data=None):
     <style>
         body {{ font-family: Arial, sans-serif; margin: 20px; }}
         .error {{ color: red; padding: 10px; border: 1px solid red; border-radius: 5px; }}
-        pre {{ background: #f8f8f8; padding: 10px; overflow: auto; max-height: 300px; }}
+        pre {{ background: #f8f8f8; padding: 10px; overflow: auto; }}
     </style>
 </head>
 <body>
@@ -1733,7 +1677,7 @@ def generate_preview_html(config_path, template_path, test_data=None):
         <p>{str(e)}</p>
     </div>
     <h3>错误堆栈:</h3>
-    <pre>{error_trace}</pre>
+    <pre>{traceback.format_exc()}</pre>
     <p>请检查配置和模板是否正确。</p>
 </body>
 </html>"""

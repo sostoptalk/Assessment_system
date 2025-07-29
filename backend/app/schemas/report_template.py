@@ -34,8 +34,26 @@ class ReportTemplateResponse(ReportTemplateBase):
 
 class ReportTemplateDetail(ReportTemplateResponse):
     """报告模板详情Schema"""
-    config: Dict[str, Any]
+    config: Any  # 可以接受字典或字符串
     yaml_config: str
+    
+    class Config:
+        orm_mode = True
+        schema_extra = {
+            "example": {
+                "id": 1,
+                "name": "示例模板",
+                "paper_id": 1,
+                "config": {
+                    "title": "报告标题",
+                    "introduction": "报告介绍",
+                    "html_content": "<div>示例HTML内容</div>"
+                },
+                "yaml_config": "title: 报告标题\nintroduction: 报告介绍",
+                "created_at": "2023-01-01T00:00:00",
+                "updated_at": "2023-01-01T00:00:00"
+            }
+        }
 
 
 class ReportTemplatePreview(BaseModel):
