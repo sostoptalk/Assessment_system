@@ -66,7 +66,7 @@ const ParticipantLayout = () => {
                 }}>
                     <img
                         src="/logo.png"
-                        alt="中量工程咨询有限公司"
+                        alt="中量建设管理集团"
                         style={{
                             width: collapsed ? 32 : 64,
                             height: collapsed ? 32 : 64,
@@ -79,7 +79,7 @@ const ParticipantLayout = () => {
                             fontWeight: 'bold',
                             marginTop: '8px',
                             color: '#333'
-                        }}>中量工程咨询</span>
+                        }}>中量建设管理集团</span>
                     )}
                 </div>
 
@@ -98,7 +98,7 @@ const ParticipantLayout = () => {
                     justifyContent: 'space-between',
                     alignItems: 'center'
                 }}>
-                    <h2 style={{ margin: 0 }}>中量工程咨询有限公司</h2>
+                    <h2 style={{ margin: 0 }}>中量建设管理集团</h2>
                     <Button
                         type="text"
                         icon={<LogoutOutlined />}

@@ -1,5 +1,5 @@
 # 商业推理能力测评配置文件
-paper_id: 2
+paper_id: 16
 paper_name: "商业推理能力测评"
 paper_description: "商业推理能力是指个体在复杂商业环境中，运用逻辑思维、数据分析、战略判断等能力，解决商业问题并做出有效决策的综合能力。"
 paper_version: "v1.0"
@@ -19,24 +19,36 @@ dimensions:
     color: "#4CAF50"
     description: "指洞察文字、图表等资料的能力，反映能否快速抓住复杂信息中的要点、提取出关键信息。"
     radar_angles: [0]
+    sub_dimensions:
+      - name: "信息提取"
+        description: "从复杂资料中提取关键信息的能力"
 
 
   - name: "批判性评估"
     color: "#2196F3"
     description: "思维的严谨性，指批判性质疑的能力，反映能否敏锐地发现隐含的逻辑漏洞、缺陷或问题。"
     radar_angles: [90]
+    sub_dimensions:
+      - name: "逻辑分析"
+        description: "识别逻辑错误和论证漏洞的能力"
 
 
   - name: "策略性推理"
     color: "#FF9800"
     description: "思维的策略性，指从多角度分析问题原因的能力，反映能否灵活地转换思路，挖掘出问题解决的关键线索。"
     radar_angles: [180]
+    sub_dimensions:
+      - name: "多角度思考"
+        description: "从不同角度分析问题的能力"
 
 
   - name: "概念性推理"
     color: "#9C27B0"
     description: "思维的归纳性，指从具体事物中归纳出通用规律的能力，反映能否跳出具体信息，做到举一反三。"
     radar_angles: [270]
+    sub_dimensions:
+      - name: "归纳总结"
+        description: "从具体事例中提炼普遍规律的能力"
 
 
 # 分数区间定义

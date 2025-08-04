@@ -92,22 +92,22 @@ const AdminLayout = () => {
                     transition: 'all 0.3s'
                 }}>
                     <img
-                        src="/logo.png"
-                        alt="中量工程咨询有限公司"
+                        src="/组合1.png"
+                        alt="中量建设管理集团"
                         style={{
-                            width: collapsed ? 32 : 64,
-                            height: collapsed ? 32 : 64,
+                            width: collapsed ? 64 : 150,
+                            height: collapsed ? 48 : 100,
                             objectFit: 'contain'
                         }}
                     />
-                    {!collapsed && (
+                    {/* {!collapsed && (
                         <span style={{
                             fontSize: '14px',
                             fontWeight: 'bold',
                             marginTop: '8px',
                             color: '#333'
-                        }}>中量工程咨询</span>
-                    )}
+                        }}>中量建设管理集团</span>
+                    )} */}
                 </div>
 
                 <Menu
@@ -126,7 +126,7 @@ const AdminLayout = () => {
                     alignItems: 'center'
                 }}>
                     {/* 保持现有标题不变 */}
-                    <h2 style={{ margin: 0 }}>中量工程咨询有限公司</h2>
+                    <h2 style={{ margin: 0 }}>中量建设管理集团</h2>
                     <Button
                         type="text"
                         icon={<LogoutOutlined />}

@@ -112,14 +112,36 @@ export const apiService = {
     },
 
     // 删除
-    async delete(url: string, id: number | string) {
+    async delete(url: string, id?: number | string | object) {
         if (url.startsWith('/api/')) {
             url = url.substring(4);
         }
         if (!url.startsWith('/')) {
             url = '/' + url;
         }
-        return api.delete(`${url}/${id}`);
+        // 处理不同的删除方式
+        if (typeof id === 'object') {
+            return api.delete(url, id as any);
+        } else if (id !== undefined) {
+            return api.delete(`${url}/${id}`);
+        } else {
+            return api.delete(url);
+        }
+    },
+
+    // 下载文件
+    async download(url: string) {
+        if (url.startsWith('/api/')) {
+            url = url.substring(4);
+        }
+        if (!url.startsWith('/')) {
+            url = '/' + url;
+        }
+        const token = localStorage.getItem('token') || '';
+        return axios.get(url, {
+            headers: { Authorization: `Bearer ${token}` },
+            responseType: 'blob'
+        });
     },
 
     // 自定义请求

@@ -11,7 +11,9 @@ import {
     Tooltip,
     Spin,
     message,
-    Typography
+    Typography,
+    Select,
+    Tag
 } from 'antd';
 import {
     DeleteOutlined,
@@ -21,7 +23,10 @@ import {
     EyeOutlined,
     CopyOutlined,
     SaveOutlined,
-    PlusOutlined
+    PlusOutlined,
+    CloudDownloadOutlined,
+    CloudUploadOutlined,
+    FileOutlined
 } from '@ant-design/icons';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import TemplateComponentLibrary from './TemplateComponentLibrary';
@@ -31,6 +36,7 @@ import axios from 'axios';
 const { Panel } = Collapse;
 const { TextArea } = Input;
 const { Text } = Typography;
+const { Option } = Select;
 
 // 组件项目接口
 interface ComponentItem {
@@ -40,6 +46,11 @@ interface ComponentItem {
     html: string;
     content: string; // 实际渲染的HTML内容
     params: Record<string, any>; // 组件参数
+}
+
+interface SavedTemplate {
+    id: number;
+    name: string;
 }
 
 interface TemplateDesignerProps {
@@ -62,12 +73,41 @@ const TemplateDesigner: React.FC<TemplateDesignerProps> = ({
     const [form] = Form.useForm();
     const [componentLibraryVisible, setComponentLibraryVisible] = useState(false);
 
+    // 新增状态用于保存/加载模板
+    const [savedTemplates, setSavedTemplates] = useState<SavedTemplate[]>([]);
+    const [saveTemplateVisible, setSaveTemplateVisible] = useState(false);
+    const [loadTemplateVisible, setLoadTemplateVisible] = useState(false);
+    const [saveTemplateName, setSaveTemplateName] = useState('');
+    const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+    const [savingTemplate, setSavingTemplate] = useState(false);
+    const [loadingTemplates, setLoadingTemplates] = useState(false);
+    const [loadingTemplateContent, setLoadingTemplateContent] = useState(false);
+
     // 当外部传入的初始组件变化时，更新状态
     useEffect(() => {
         if (initialComponents.length > 0) {
             setComponents(initialComponents);
         }
     }, [initialComponents]);
+
+    // 加载可用的保存模板列表
+    useEffect(() => {
+        fetchSavedTemplates();
+    }, []);
+
+    // 获取保存的模板列表
+    const fetchSavedTemplates = async () => {
+        try {
+            setLoadingTemplates(true);
+            const response = await apiService.getList('/report-templates/designer-templates');
+            setSavedTemplates(response || []);
+        } catch (error) {
+            console.error('获取模板列表失败:', error);
+            message.error('获取保存的模板列表失败');
+        } finally {
+            setLoadingTemplates(false);
+        }
+    };
 
     // 处理组件拖拽结束事件
     const handleDragEnd = (result: any) => {
@@ -275,6 +315,65 @@ ${components.map(comp => comp.content).join('\n')}
         onSave(components, combinedHtml);
     };
 
+    // 保存模板到库中
+    const handleSaveTemplateToLibrary = async () => {
+        if (!saveTemplateName.trim()) {
+            message.error('请输入模板名称');
+            return;
+        }
+
+        try {
+            setSavingTemplate(true);
+
+            const templateData = {
+                name: saveTemplateName.trim(),
+                components: components,
+                html_content: components.map(comp => comp.content).join('\n')
+            };
+
+            await apiService.create('/report-templates/designer-templates', templateData);
+            message.success('模板已成功保存到库中');
+            setSaveTemplateVisible(false);
+            setSaveTemplateName('');
+
+            // 刷新模板列表
+            fetchSavedTemplates();
+        } catch (error) {
+            console.error('保存模板失败:', error);
+            message.error('保存模板失败');
+        } finally {
+            setSavingTemplate(false);
+        }
+    };
+
+    // 从库中加载模板
+    const handleLoadTemplateFromLibrary = async () => {
+        if (!selectedTemplateId) {
+            message.error('请选择要加载的模板');
+            return;
+        }
+
+        try {
+            setLoadingTemplateContent(true);
+
+            const templateData = await apiService.getDetail('/report-templates/designer-templates', selectedTemplateId);
+
+            if (templateData && templateData.components) {
+                setComponents(templateData.components);
+                message.success('模板已成功加载');
+                setLoadTemplateVisible(false);
+                setSelectedTemplateId(null);
+            } else {
+                throw new Error('模板数据格式错误');
+            }
+        } catch (error) {
+            console.error('加载模板失败:', error);
+            message.error('加载模板失败');
+        } finally {
+            setLoadingTemplateContent(false);
+        }
+    };
+
     // 加载默认模板
     const loadDefaultTemplate = async () => {
         try {
@@ -369,10 +468,26 @@ ${components.map(comp => comp.content).join('\n')}
                         </Button>
                         <Button
                             onClick={loadDefaultTemplate}
-                            icon={<SaveOutlined />}
+                            icon={<CloudDownloadOutlined />}
                         >
                             加载默认模板
                         </Button>
+                        <Tooltip title="保存模板到库中以便后续使用">
+                            <Button
+                                onClick={() => setSaveTemplateVisible(true)}
+                                icon={<CloudUploadOutlined />}
+                            >
+                                保存到库
+                            </Button>
+                        </Tooltip>
+                        <Tooltip title="从已保存的模板库中加载">
+                            <Button
+                                onClick={() => setLoadTemplateVisible(true)}
+                                icon={<FileOutlined />}
+                            >
+                                从库加载
+                            </Button>
+                        </Tooltip>
                         <Button
                             onClick={handlePreview}
                             loading={previewLoading}
@@ -406,6 +521,12 @@ ${components.map(comp => comp.content).join('\n')}
                                 onClick={loadDefaultTemplate}
                             >
                                 加载默认模板
+                            </Button>
+                            <Button
+                                style={{ marginLeft: '10px' }}
+                                onClick={() => setLoadTemplateVisible(true)}
+                            >
+                                从库加载
                             </Button>
                         </div>
                     </div>
@@ -442,6 +563,7 @@ ${components.map(comp => comp.content).join('\n')}
                                                             header={
                                                                 <div style={{ display: 'flex', alignItems: 'center' }}>
                                                                     <span>{`${index + 1}. ${component.type} - ${component.name}`}</span>
+                                                                    <Tag color="blue" style={{ marginLeft: '8px' }}>{component.type}</Tag>
                                                                 </div>
                                                             }
                                                             key={component.id}
@@ -603,6 +725,69 @@ ${components.map(comp => comp.content).join('\n')}
                     </div>
                 </Modal>
             )}
+
+            {/* 保存模板到库模态框 */}
+            <Modal
+                title="保存模板到库"
+                open={saveTemplateVisible}
+                onCancel={() => setSaveTemplateVisible(false)}
+                onOk={handleSaveTemplateToLibrary}
+                confirmLoading={savingTemplate}
+            >
+                <Form layout="vertical">
+                    <Form.Item
+                        label="模板名称"
+                        required
+                        rules={[{ required: true, message: '请输入模板名称' }]}
+                    >
+                        <Input
+                            placeholder="输入一个描述性的模板名称"
+                            value={saveTemplateName}
+                            onChange={(e) => setSaveTemplateName(e.target.value)}
+                        />
+                    </Form.Item>
+                    <Text type="secondary">保存后可以在以后的编辑中重复使用此模板</Text>
+                </Form>
+            </Modal>
+
+            {/* 从库加载模板模态框 */}
+            <Modal
+                title="从库加载模板"
+                open={loadTemplateVisible}
+                onCancel={() => setLoadTemplateVisible(false)}
+                onOk={handleLoadTemplateFromLibrary}
+                confirmLoading={loadingTemplateContent}
+            >
+                {loadingTemplates ? (
+                    <div style={{ textAlign: 'center', padding: '20px' }}>
+                        <Spin tip="加载模板列表..." />
+                    </div>
+                ) : (
+                    <Form layout="vertical">
+                        <Form.Item
+                            label="选择模板"
+                            required
+                        >
+                            <Select
+                                placeholder="选择要加载的模板"
+                                style={{ width: '100%' }}
+                                value={selectedTemplateId}
+                                onChange={(value) => setSelectedTemplateId(value)}
+                            >
+                                {savedTemplates.map(template => (
+                                    <Option key={template.id} value={template.id}>{template.name}</Option>
+                                ))}
+                            </Select>
+                        </Form.Item>
+                        {savedTemplates.length === 0 && (
+                            <div style={{ textAlign: 'center' }}>
+                                <Text type="secondary">暂无保存的模板</Text>
+                            </div>
+                        )}
+                        <Text type="secondary">选择一个已保存的模板进行加载，将替换当前设计器中的所有组件</Text>
+                    </Form>
+                )}
+            </Modal>
         </div>
     );
 };

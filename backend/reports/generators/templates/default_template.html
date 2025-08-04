@@ -1,0 +1,122 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>报告模板</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      margin: 0 auto;
+      padding: 20px;
+      max-width: 800px;
+      line-height: 1.5;
+      color: #333;
+      background-color: #fff;
+    }
+  </style>
+</head>
+<body>
+<header style="text-align: center; margin-bottom: 20px; padding: 10px; border-bottom: 2px solid #3498db;">
+    <h1 style="color: #2c3e50; margin: 5px 0;">{{ report_title|default('测评报告') }}</h1>
+    <p><strong>姓名：</strong>{{ user_info.name }}</p>
+    <p><strong>测评日期：</strong>{{ current_date|default('2025年5月') }}</p>
+</header>
+<div style="margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #f5f9ff, #e8f4ff); border-radius: 8px; border: 1px solid #d9e9ff;">
+    <h3 style="color: #2c3e50; margin-top: 0;">阅读指南</h3>
+    <p>{{ guide_content|default('本报告基于标准化测评结果生成，旨在提供个人能力特点的客观描述和发展建议。报告中的分数和评价是相对于参考群体的，无优劣之分，请结合实际情况参考。') }}</p>
+    <div style="margin-top: 15px;">
+        <strong>分数说明：</strong>
+        <ul style="margin-top: 5px;">
+            <li>8.5-10分：表现优秀</li>
+            <li>7.5-8.4分：表现良好</li>
+            <li>6.5-7.4分：表现一般</li>
+            <li>6.4分以下：有待提升</li>
+        </ul>
+    </div>
+</div>
+<div style="margin: 20px 0; text-align: center;">
+    <h3 style="color: #2c3e50; margin-bottom: 10px;">{{ chart_title|default('能力维度分布') }}</h3>
+    <div style="border: 1px solid #eee; border-radius: 5px; padding: 10px; background-color: #fff;">
+        <img src="{{ chart_img }}" alt="维度分析图" style="max-width: 100%; height: auto;">
+    </div>
+    <p style="font-style: italic; color: #7f8c8d; font-size: 12px; margin-top: 5px;">{{ chart_description|default('上图展示了各维度的相对得分分布') }}</p>
+</div>
+<div style="margin: 20px 0;">
+    <h3 style="color: #2c3e50; margin-bottom: 15px; border-bottom: 1px solid #ecf0f1; padding-bottom: 8px;">维度详细分析</h3>
+    
+    {% for dim in dimensions %}
+    <div style="margin: 20px 0; padding: 20px; background-color: #f8f9fa; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #ecf0f1; padding-bottom: 10px;">
+            <h4 style="margin: 0; color: #2c3e50;">{{ dim.name }}</h4>
+            <div>
+                <span style="font-weight: bold; font-size: 16px; color: #3498db;">{{ dim.score|round(1) }} 分</span>
+                
+                {% if dimension_evaluations[dim.name] %}
+                <span style="margin-left: 10px; padding: 3px 10px; border-radius: 20px; background-color: 
+                {% if dimension_evaluations[dim.name].eval_level == 'high' %}#27ae60{% elif dimension_evaluations[dim.name].eval_level == 'medium' %}#f39c12{% else %}#e74c3c{% endif %}; 
+                color: white; font-size: 12px;">
+                {% if dimension_evaluations[dim.name].eval_level == 'high' %}优秀{% elif dimension_evaluations[dim.name].eval_level == 'medium' %}良好{% else %}待提升{% endif %}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+        
+        {% if dimension_evaluations[dim.name] %}
+        <div style="margin-bottom: 15px; padding: 10px; background-color: #ebf5fb; border-radius: 5px;">
+            <p style="margin: 0;">{{ dimension_evaluations[dim.name].dimension_eval }}</p>
+        </div>
+        {% endif %}
+        
+        <!-- 子维度展示 -->
+        {% if dim.subs and dim.subs|length &gt; 0 %}
+        <div style="margin-top: 15px;">
+            <h5 style="color: #7f8c8d; margin-bottom: 10px;">子维度分析</h5>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px;">
+                {% for sub_name, sub_data in dim.subs.items() %}
+                <div style="padding: 15px; background-color: white; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="font-weight: bold;">{{ sub_name }}</span>
+                        <span style="color: #3498db; font-weight: bold;">{{ sub_data.score|round(1) }}分</span>
+                    </div>
+                    
+                    {% if sub_data.evaluation %}
+                    <div style="font-size: 13px; color: #555;">
+                        <p style="margin: 5px 0;"><strong>特点：</strong>{{ sub_data.evaluation.潜质特点 }}</p>
+                        <p style="margin: 5px 0;"><strong>工作表现：</strong>{{ sub_data.evaluation.工作中的倾向 }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+<div style="margin: 20px 0; padding: 20px; background-color: #f9f9f9; border-radius: 5px; border: 1px solid #eee;">
+    <h3 style="color: #2c3e50; margin-top: 0;">总结与建议</h3>
+    
+    <div style="margin-top: 15px;">
+        <h4 style="color: #3498db; margin-bottom: 10px;">总体评价</h4>
+        <p>{{ performance_eval.summary }}</p>
+    </div>
+    
+    <div style="margin-top: 15px;">
+        <h4 style="color: #3498db; margin-bottom: 10px;">发展建议</h4>
+        <p>{{ performance_eval.development_focus }}</p>
+    </div>
+</div>
+<footer style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #ecf0f1; text-align: center; color: #7f8c8d; font-size: 12px;">
+    <p>本报告由专业测评系统生成，内容仅作参考</p>
+    <p>© {{ current_year|default('2025') }} 人力资源部 | 保密文件</p>
+</footer>
+</body>
+</html>

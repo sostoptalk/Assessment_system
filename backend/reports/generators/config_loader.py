@@ -12,12 +12,34 @@ class PaperConfigLoader:
         self.config_dir = current_dir / config_dir
         self._configs_cache = {}
         
+        # 初始化备用配置目录
+        self.alt_config_dir = None
+        parent_dir = current_dir.parent.parent.parent
+        alt_path = parent_dir / "backend" / "reports" / "generators" / "configs"
+        if alt_path.exists():
+            self.alt_config_dir = alt_path
+            print(f"配置加载器发现备用配置目录: {self.alt_config_dir}")
+        
     def load_config(self, paper_id: int) -> Dict[str, Any]:
         """加载指定试卷的配置文件"""
         if paper_id in self._configs_cache:
             return self._configs_cache[paper_id]
             
         config_file = self.config_dir / f"{paper_id}.yaml"
+        
+        # 如果配置文件不存在，尝试从备用路径加载
+        if not config_file.exists() and self.alt_config_dir:
+            alt_config_file = self.alt_config_dir / f"{paper_id}.yaml"
+            if alt_config_file.exists():
+                try:
+                    print(f"配置文件在主路径不存在，尝试从备用路径加载: {alt_config_file}")
+                    import shutil
+                    shutil.copy2(alt_config_file, config_file)
+                    print(f"已复制配置文件到主路径: {config_file}")
+                except Exception as e:
+                    print(f"复制配置文件失败: {str(e)}")
+                    # 如果复制失败，直接使用备用路径的文件
+                    config_file = alt_config_file
         
         if not config_file.exists():
             raise FileNotFoundError(f"配置文件不存在: {config_file}")
@@ -34,11 +56,12 @@ class PaperConfigLoader:
             
         except yaml.YAMLError as e:
             raise yaml.YAMLError(f"配置文件格式错误 {config_file}: {e}")
-            
+    
     def get_available_papers(self) -> List[Dict[str, Any]]:
         """获取所有可用的试卷配置信息"""
         papers = []
         
+        # 首先检查主配置目录
         for config_file in self.config_dir.glob("*.yaml"):
             try:
                 with open(config_file, 'r', encoding='utf-8') as f:
@@ -51,12 +74,37 @@ class PaperConfigLoader:
                         'paper_description': config.get('paper_description'),
                         'paper_version': config.get('paper_version'),
                         'dimensions_count': len(config.get('dimensions', [])),
-                        'config_file': config_file.name
+                        'config_file': str(config_file)
                     })
                     
             except Exception as e:
                 print(f"警告: 无法读取配置文件 {config_file}: {e}")
                 continue
+        
+        # 如果有备用配置目录，也检查一下
+        if self.alt_config_dir and self.alt_config_dir.exists():
+            for config_file in self.alt_config_dir.glob("*.yaml"):
+                # 跳过已经在主路径找到的配置
+                if any(p['config_file'] == config_file.name for p in papers):
+                    continue
+                    
+                try:
+                    with open(config_file, 'r', encoding='utf-8') as f:
+                        config = yaml.safe_load(f)
+                        
+                    if self._is_valid_paper_config(config):
+                        papers.append({
+                            'paper_id': config.get('paper_id'),
+                            'paper_name': config.get('paper_name'),
+                            'paper_description': config.get('paper_description'),
+                            'paper_version': config.get('paper_version'),
+                            'dimensions_count': len(config.get('dimensions', [])),
+                            'config_file': str(config_file)
+                        })
+                        
+                except Exception as e:
+                    print(f"警告: 无法读取备用配置文件 {config_file}: {e}")
+                    continue
                 
         return sorted(papers, key=lambda x: x['paper_id'])
         

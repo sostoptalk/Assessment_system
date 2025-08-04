@@ -7,41 +7,93 @@ def generate_report_task(task_id, user_id, paper_id, report_tasks, SessionLocal)
     """
     生成报告的后台任务
     """
+    # 确保os模块在函数开始时就可用
+    import os
+    import traceback
+    
     # 在函数内部导入模型
-    from app.main import User, Paper, PaperQuestion, Dimension, Report
-    import sys
-    sys.path.append(os.path.join(os.path.dirname(__file__), '../../reports/generators'))
-    from reports.generators.report_core import generate_single_report
+    print(f"[DEBUG] 进入报告生成任务: task_id={task_id}, user_id={user_id}, paper_id={paper_id}")
+    
+    try:
+        from app.main import User, Paper, PaperQuestion, Dimension, Report
+        print(f"[DEBUG] 成功导入数据库模型")
+        
+        import sys
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        generators_path = os.path.join(current_dir, '../../reports/generators')
+        print(f"[DEBUG] 添加路径到sys.path: {generators_path}")
+        sys.path.append(generators_path)
+        
+        try:
+            from reports.generators.report_core import generate_single_report
+            print(f"[DEBUG] 成功导入report_core.generate_single_report")
+        except ImportError as e:
+            print(f"[ERROR] 导入report_core失败: {str(e)}")
+            import traceback
+            print(f"[ERROR] 导入错误详情: {traceback.format_exc()}")
+            raise
+    except Exception as e:
+        print(f"[ERROR] 初始化报告生成任务失败: {str(e)}")
+        import traceback
+        print(f"[ERROR] 初始化错误详情: {traceback.format_exc()}")
+        report_tasks[task_id]["status"] = "failed"
+        report_tasks[task_id]["error_message"] = f"初始化失败: {str(e)}"
+        report_tasks[task_id]["progress"] = 100
+        return
     
     db = SessionLocal()
     try:
-        print(f"开始生成报告: task_id={task_id}, user_id={user_id}, paper_id={paper_id}")
+        print(f"[DEBUG] 开始生成报告: task_id={task_id}, user_id={user_id}, paper_id={paper_id}")
         report_tasks[task_id]["status"] = "generating"
         report_tasks[task_id]["progress"] = 10
         # 1. 获取用户信息
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            raise Exception("用户不存在")
-        print(f"用户信息: {user.real_name or user.username}")
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                raise Exception("用户不存在")
+            print(f"[DEBUG] 用户信息: ID={user.id}, 姓名={user.real_name or user.username}")
+        except Exception as e:
+            print(f"[ERROR] 获取用户信息失败: {str(e)}")
+            raise Exception(f"获取用户信息失败: {str(e)}")
         
         # 2. 获取试卷信息
-        paper = db.query(Paper).filter(Paper.id == paper_id).first()
-        if not paper:
-            raise Exception("试卷不存在")
-        print(f"试卷信息: {paper.name}")
+        try:
+            paper = db.query(Paper).filter(Paper.id == paper_id).first()
+            if not paper:
+                raise Exception("试卷不存在")
+            print(f"[DEBUG] 试卷信息: ID={paper.id}, 名称={paper.name}")
+        except Exception as e:
+            print(f"[ERROR] 获取试卷信息失败: {str(e)}")
+            raise Exception(f"获取试卷信息失败: {str(e)}")
         
         # 3. 获取答题记录
-        answers = db.execute(
-            text("SELECT question_id, answer, score FROM answers WHERE user_id = :user_id"),
-            {"user_id": user_id}
-        ).fetchall()
-        answer_map = {row[0]: row[1] for row in answers}
-        print(f"答题记录数量: {len(answer_map)}")
+        try:
+            answers = db.execute(
+                text("SELECT question_id, answer, score FROM answers WHERE user_id = :user_id"),
+                {"user_id": user_id}
+            ).fetchall()
+            answer_map = {row[0]: row[1] for row in answers}
+            print(f"[DEBUG] 答题记录数量: {len(answer_map)}")
+            if len(answer_map) == 0:
+                print(f"[WARNING] 用户 {user_id} 没有答题记录!")
+        except Exception as e:
+            print(f"[ERROR] 获取答题记录失败: {str(e)}")
+            import traceback
+            print(f"[ERROR] 获取答题记录错误详情: {traceback.format_exc()}")
+            raise Exception(f"获取答题记录失败: {str(e)}")
         
         # 4. 获取题目-维度映射
-        paper_questions = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).all()
-        question_dim_map = {pq.question_id: pq.dimension_id for pq in paper_questions}
-        print(f"题目-维度映射数量: {len(question_dim_map)}")
+        try:
+            paper_questions = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).all()
+            question_dim_map = {pq.question_id: pq.dimension_id for pq in paper_questions}
+            print(f"[DEBUG] 题目-维度映射数量: {len(question_dim_map)}")
+            if len(question_dim_map) == 0:
+                print(f"[WARNING] 试卷 {paper_id} 没有题目-维度映射!")
+        except Exception as e:
+            print(f"[ERROR] 获取题目-维度映射失败: {str(e)}")
+            import traceback
+            print(f"[ERROR] 获取题目-维度映射错误详情: {traceback.format_exc()}")
+            raise Exception(f"获取题目-维度映射失败: {str(e)}")
         
         # 5. 组装 report_data
         # 计算总分和维度分数
@@ -50,8 +102,17 @@ def generate_report_task(task_id, user_id, paper_id, report_tasks, SessionLocal)
         
         # 根据实际答题记录计算分数
         # 获取维度信息
-        dimensions = db.query(Dimension).filter(Dimension.paper_id == paper_id).all()
-        dimension_map = {dim.id: dim.name for dim in dimensions}
+        try:
+            dimensions = db.query(Dimension).filter(Dimension.paper_id == paper_id).all()
+            print(f"[DEBUG] 获取到维度数量: {len(dimensions)}")
+            if len(dimensions) == 0:
+                print(f"[WARNING] 试卷 {paper_id} 没有维度定义!")
+            dimension_map = {dim.id: dim.name for dim in dimensions}
+        except Exception as e:
+            print(f"[ERROR] 获取维度信息失败: {str(e)}")
+            import traceback
+            print(f"[ERROR] 获取维度信息错误详情: {traceback.format_exc()}")
+            raise Exception(f"获取维度信息失败: {str(e)}")
         
         # 构建维度层级结构
         big_dimensions = {}
@@ -110,11 +171,12 @@ def generate_report_task(task_id, user_id, paper_id, report_tasks, SessionLocal)
             }
         
         # 计算总分（所有大维度的平均分）
+        total_score = 0
         if dimension_scores:
             total_score = sum(dim["score"] for dim in dimension_scores.values()) / len(dimension_scores)
-        
-        print(f"计算得到的维度分数: {dimension_scores}")
-        print(f"计算得到的总分: {total_score}")
+
+        print(f"[DEBUG] 计算得到的维度分数: {dimension_scores}")
+        print(f"[DEBUG] 计算得到的总分: {total_score}")
         
         report_data = {
             "user_info": {
@@ -133,50 +195,105 @@ def generate_report_task(task_id, user_id, paper_id, report_tasks, SessionLocal)
             "question_dim_map": question_dim_map
         }
         
-        print(f"报告数据组装完成，开始生成PDF...")
+        print(f"[DEBUG] 报告数据组装完成，开始生成PDF...")
         
         # 6. 生成PDF
-        from pathlib import Path
-        output_dir = Path(__file__).parent.parent.parent / "reports" / "generators" / "output"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        safe_name = (user.real_name or user.username or "user")
-        output_filename = f"{safe_name}_报告_{paper_id}_{user_id}_{int(time.time())}.pdf"
-        output_path = str(output_dir / output_filename)
-        
-        print(f"PDF输出路径: {output_path}")
-        generate_single_report(paper_id, report_data, output_path)
-        
-        print(f"PDF生成成功: {output_path}")
+        try:
+            from pathlib import Path
+            output_dir = Path(__file__).parent.parent.parent / "reports" / "generators" / "output"
+            print(f"[DEBUG] 输出目录: {output_dir}")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            safe_name = (user.real_name or user.username or "user")
+            output_filename = f"{safe_name}_报告_{paper_id}_{user_id}_{int(time.time())}.pdf"
+            output_path = str(output_dir / output_filename)
+            
+            print(f"[DEBUG] PDF输出路径: {output_path}")
+            
+            # 检查配置文件是否存在
+            config_path = Path(__file__).parent.parent.parent / "reports" / "generators" / "configs" / f"{paper_id}.yaml"
+            print(f"[DEBUG] 配置文件路径: {config_path}, 存在: {config_path.exists()}")
+
+            # 如果配置文件不存在，尝试在备选路径查找
+            if not config_path.exists():
+                alt_config_path = Path(__file__).parent.parent.parent / "backend" / "reports" / "generators" / "configs" / f"{paper_id}.yaml"
+                if alt_config_path.exists():
+                    print(f"[DEBUG] 在备选路径找到配置文件: {alt_config_path}")
+                    # 复制到正确位置
+                    import shutil
+                    try:
+                        shutil.copy2(alt_config_path, config_path)
+                        print(f"[DEBUG] 已将配置文件从 {alt_config_path} 复制到 {config_path}")
+                    except Exception as copy_error:
+                        print(f"[ERROR] 复制配置文件失败: {str(copy_error)}")
+
+            # 再次检查配置文件是否存在
+            if not config_path.exists():
+                raise Exception(f"配置文件不存在: {config_path}")
+
+            # 调用报告生成函数
+            print(f"[DEBUG] 调用generate_single_report函数: paper_id={paper_id}")
+            generate_single_report(paper_id, report_data, output_path)
+            
+            print(f"[DEBUG] PDF生成成功: {output_path}")
+        except Exception as e:
+            print(f"[ERROR] 生成PDF失败: {str(e)}")
+            import traceback
+            print(f"[ERROR] 生成PDF错误详情: {traceback.format_exc()}")
+            raise Exception(f"生成PDF失败: {str(e)}")
         
         # 保存报告到数据库
-        import os
-        
-        # 计算文件大小
-        file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
-        
-        # 创建报告记录
-        report = Report(
-            user_id=user_id,
-            paper_id=paper_id,
-            file_path=output_path,
-            file_name=output_filename,
-            file_size=file_size,
-            status="completed"
-        )
-        db.add(report)
-        db.commit()
-        db.refresh(report)
-        
-        report_tasks[task_id]["status"] = "completed"
-        report_tasks[task_id]["progress"] = 100
-        report_tasks[task_id]["file_path"] = output_path
-        report_tasks[task_id]["report_id"] = report.id
+        try:
+            import os
+            
+            # 计算文件大小
+            if os.path.exists(output_path):
+                file_size = os.path.getsize(output_path)
+                print(f"[DEBUG] 文件存在，大小: {file_size} 字节")
+            else:
+                file_size = 0
+                print(f"[WARNING] 文件不存在: {output_path}")
+            
+            # 创建报告记录
+            print(f"[DEBUG] 创建报告记录: user_id={user_id}, paper_id={paper_id}")
+            report = Report(
+                user_id=user_id,
+                paper_id=paper_id,
+                file_path=output_path,
+                file_name=output_filename,
+                file_size=file_size,
+                status="completed"
+            )
+            db.add(report)
+            db.commit()
+            db.refresh(report)
+            print(f"[DEBUG] 报告记录创建成功，ID: {report.id}")
+            
+            # 更新任务状态
+            print(f"[DEBUG] 更新任务状态为已完成: task_id={task_id}")
+            report_tasks[task_id]["status"] = "completed"
+            report_tasks[task_id]["progress"] = 100
+            report_tasks[task_id]["file_path"] = output_path
+            report_tasks[task_id]["report_id"] = report.id
+        except Exception as e:
+            print(f"[ERROR] 保存报告记录失败: {str(e)}")
+            import traceback
+            print(f"[ERROR] 保存报告记录错误详情: {traceback.format_exc()}")
+            raise Exception(f"保存报告记录失败: {str(e)}")
     except Exception as e:
-        print(f"生成报告失败: {str(e)}")
+        print(f"[ERROR] 生成报告失败: {str(e)}")
         import traceback
-        print(f"详细错误: {traceback.format_exc()}")
-        report_tasks[task_id]["status"] = "failed"
-        report_tasks[task_id]["error_message"] = str(e)
-        report_tasks[task_id]["progress"] = 100
+        print(f"[ERROR] 详细错误: {traceback.format_exc()}")
+        try:
+            report_tasks[task_id]["status"] = "failed"
+            report_tasks[task_id]["error_message"] = str(e)
+            report_tasks[task_id]["progress"] = 100
+            print(f"[DEBUG] 已更新任务状态为失败: task_id={task_id}")
+        except Exception as ex:
+            print(f"[ERROR] 更新任务状态失败: {str(ex)}")
     finally:
-        db.close() 
+        try:
+            db.close()
+            print(f"[DEBUG] 数据库连接已关闭")
+        except Exception as e:
+            print(f"[ERROR] 关闭数据库连接失败: {str(e)}")
+        print(f"[DEBUG] 报告生成任务完成: task_id={task_id}") 

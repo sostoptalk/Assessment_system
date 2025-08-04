@@ -254,4 +254,64 @@ async def delete_report_template(template_id: int, db: Session = Depends(get_db)
     result = report_template_service.delete_report_template(db, template_id)
     if result:
         return {"message": "报告模板已删除"}
-    return {"message": "删除报告模板失败"} 
+    return {"message": "删除报告模板失败"}
+
+# 添加模板设计器相关API
+@router.post("/designer-templates", response_model=dict)
+async def create_designer_template(template_data: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    """保存设计器模板到库中"""
+    try:
+        result = report_template_service.create_designer_template(db, template_data)
+        return {"success": True, "id": result.id, "message": "模板保存成功"}
+    except Exception as e:
+        import traceback
+        print(f"保存设计器模板失败: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"保存设计器模板失败: {str(e)}")
+
+@router.get("/designer-templates", response_model=List[Dict[str, Any]])
+async def get_designer_templates(db: Session = Depends(get_db)):
+    """获取设计器模板列表"""
+    try:
+        templates = report_template_service.get_designer_templates(db)
+        return [{"id": t.id, "name": t.name, "created_at": t.created_at} for t in templates]
+    except Exception as e:
+        print(f"获取设计器模板列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取设计器模板列表失败: {str(e)}")
+
+@router.get("/designer-templates/{template_id}", response_model=Dict[str, Any])
+async def get_designer_template(template_id: int, db: Session = Depends(get_db)):
+    """获取单个设计器模板详情"""
+    try:
+        template = report_template_service.get_designer_template(db, template_id)
+        if not template:
+            raise HTTPException(status_code=404, detail=f"模板ID {template_id} 不存在")
+            
+        # 解析配置，确保组件字段是可用的
+        config = json.loads(template.config) if isinstance(template.config, str) else template.config
+        components = config.get('components', [])
+        
+        return {
+            "id": template.id,
+            "name": template.name,
+            "components": components,
+            "html_content": config.get('html_content', ''),
+            "created_at": template.created_at
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"获取设计器模板详情失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取设计器模板详情失败: {str(e)}")
+
+@router.delete("/designer-templates/{template_id}")
+async def delete_designer_template(template_id: int, db: Session = Depends(get_db)):
+    """删除设计器模板"""
+    try:
+        result = report_template_service.delete_designer_template(db, template_id)
+        if result:
+            return {"message": "设计器模板已删除"}
+        return {"message": "删除设计器模板失败"}
+    except Exception as e:
+        print(f"删除设计器模板失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"删除设计器模板失败: {str(e)}") 

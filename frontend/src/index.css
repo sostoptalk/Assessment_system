@@ -76,3 +76,79 @@ button:focus-visible {
         background-color: #f9f9f9;
     }
 }
+
+/* 全屏相关样式 */
+:fullscreen {
+    background-color: white !important;
+    color: #213547 !important;
+}
+
+:-webkit-full-screen {
+    background-color: white !important;
+    color: #213547 !important;
+}
+
+:-moz-full-screen {
+    background-color: white !important;
+    color: #213547 !important;
+}
+
+:-ms-fullscreen {
+    background-color: white !important;
+    color: #213547 !important;
+}
+
+/* 确保全屏时内容正确显示 */
+:fullscreen [class*="ant-"] {
+    visibility: visible !important;
+    display: block !important;
+}
+
+:-webkit-full-screen [class*="ant-"] {
+    visibility: visible !important;
+    display: block !important;
+}
+
+/* 保持弹性布局元素在全屏时的显示方式 */
+:fullscreen [style*="display: flex"] {
+    display: flex !important;
+}
+
+:-webkit-full-screen [style*="display: flex"] {
+    display: flex !important;
+}
+
+/* 单选和多选样式自定义 */
+.ant-radio-wrapper {
+    align-items: center !important;
+    display: flex !important;
+}
+
+.ant-radio-wrapper .ant-radio {
+    top: 0 !important;
+    margin-right: 8px !important;
+}
+
+.ant-checkbox-wrapper {
+    align-items: center !important;
+    display: flex !important;
+}
+
+.ant-checkbox-wrapper .ant-checkbox {
+    top: 0 !important;
+    margin-right: 8px !important;
+}
+
+/* 修复单选和多选按钮文字垂直对齐 */
+.ant-radio-wrapper>span:last-child,
+.ant-checkbox-wrapper>span:last-child {
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* 确保选项卡片内部元素居中对齐 */
+.ant-radio-wrapper[style*="display: flex"],
+.ant-checkbox-wrapper[style*="display: flex"] {
+    padding: 12px 16px !important;
+    line-height: 1.5 !important;
+}

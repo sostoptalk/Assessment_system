@@ -276,26 +276,25 @@ const ReportManagement: React.FC = () => {
     useEffect(() => {
         if (selectedPaper) {
             setLoading(true);
-            axios.get(`/api/papers/${selectedPaper}/list-assignment`, {
-                headers: { Authorization: `Bearer ${token}` }
-            }).then(res => {
-                const completedUsers = res.data
-                    .filter((assignment: any) => assignment.status === 'completed')
-                    .map((assignment: any) => assignment.user_id);
+            apiService.getList(`/papers/${selectedPaper}/list-assignment`)
+                .then(res => {
+                    const completedUsers = res
+                        .filter((assignment: any) => assignment.status === 'completed')
+                        .map((assignment: any) => assignment.user_id);
 
-                // 过滤出已完成该试卷的被试者
-                const availableUsers = userOptions.filter(user =>
-                    completedUsers.includes(user.value)
-                );
-                setUserOptions(availableUsers);
-                setSelectedUsers([]);
-                setAllSelected(false);
-            }).catch(err => {
-                console.error('获取试卷分配失败:', err);
-                message.error('获取试卷分配失败');
-            }).finally(() => setLoading(false));
+                    // 过滤出已完成该试卷的被试者
+                    const availableUsers = userOptions.filter(user =>
+                        completedUsers.includes(user.value)
+                    );
+                    setUserOptions(availableUsers);
+                    setSelectedUsers([]);
+                    setAllSelected(false);
+                }).catch(err => {
+                    console.error('获取试卷分配失败:', err);
+                    message.error('获取试卷分配失败');
+                }).finally(() => setLoading(false));
         }
-    }, [selectedPaper, token]);
+    }, [selectedPaper]);
 
     // 获取报告列表，支持筛选
     const fetchStoredReports = async (page = 1, pageSize = 10, filters?: any) => {
@@ -365,18 +364,16 @@ const ReportManagement: React.FC = () => {
 
         try {
             // 调用后端API批量生成报告
-            const response = await axios.post('/api/reports/batch-generate', {
+            const response = await apiService.create('/reports/batch-generate', {
                 paper_id: selectedPaper,
                 user_ids: selectedUsers
-            }, {
-                headers: { Authorization: `Bearer ${token}` }
             });
 
-            if (response.data.success) {
+            if (response.success) {
                 message.success('报告生成任务已提交');
 
                 // 使用后端返回的task_ids创建任务
-                const backendTaskIds = response.data.task_ids;
+                const backendTaskIds = response.task_ids;
                 const tasks: ReportTask[] = backendTaskIds.map((taskId: string, index: number) => {
                     const userId = selectedUsers[index];
                     const user = userOptions.find(u => u.value === userId);
@@ -395,7 +392,7 @@ const ReportManagement: React.FC = () => {
                 // 开始轮询任务状态
                 pollReportStatus(tasks);
             } else {
-                message.error(response.data.message || '报告生成失败');
+                message.error(response.message || '报告生成失败');
                 setGenerating(false);
             }
         } catch (error) {
@@ -410,15 +407,15 @@ const ReportManagement: React.FC = () => {
         const interval = setInterval(async () => {
             try {
                 console.log('轮询任务状态:', tasks.map(t => t.id));
-                const response = await axios.get('/api/reports/status', {
-                    params: { 'task_ids[]': tasks.map(t => t.id) },
-                    headers: { Authorization: `Bearer ${token}` }
+                const response = await apiService.getList('/reports/status', {
+                    'task_ids[]': tasks.map(t => t.id)
                 });
 
-                console.log('轮询响应:', response.data);
+                console.log('轮询响应:', response);
+                console.log("Response from status API:", response);
                 const updatedTasks = tasks.map(task => {
-                    const status = response.data[task.id];
-                    if (status) {
+                    if (response && response[task.id]) {
+                        const status = response[task.id];
                         return { ...task, ...status };
                     }
                     return task;
@@ -452,21 +449,23 @@ const ReportManagement: React.FC = () => {
         }
 
         try {
-            const response = await axios.get(`/api/reports/download/${task.id}`, {
-                headers: { Authorization: `Bearer ${token}` },
-                responseType: 'blob'
-            });
+            // 使用apiService的download方法下载文件
+            const response = await apiService.download(`/reports/download/${task.id}`);
 
-            const url = window.URL.createObjectURL(new Blob([response.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `${task.user_name}_${task.paper_name}_报告.pdf`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
+            if (response && response.data) {
+                const url = window.URL.createObjectURL(new Blob([response.data]));
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', `${task.user_name}_${task.paper_name}_报告.pdf`);
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.URL.revokeObjectURL(url);
 
-            message.success('报告下载成功');
+                message.success('报告下载成功');
+            } else {
+                message.error('下载报告失败：响应数据无效');
+            }
         } catch (error) {
             console.error('下载报告失败:', error);
             message.error('下载报告失败');
@@ -489,21 +488,23 @@ const ReportManagement: React.FC = () => {
     // 下载存储的报告
     const handleDownloadStoredReport = async (report: StoredReport) => {
         try {
-            const response = await axios.get(`/api/reports/${report.id}/download`, {
-                headers: { Authorization: `Bearer ${token}` },
-                responseType: 'blob'
-            });
+            // 使用apiService的download方法下载文件
+            const response = await apiService.download(`/reports/${report.id}/download`);
 
-            const url = window.URL.createObjectURL(new Blob([response.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', report.file_name);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
+            if (response && response.data) {
+                const url = window.URL.createObjectURL(new Blob([response.data]));
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', report.file_name);
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.URL.revokeObjectURL(url);
 
-            message.success('报告下载成功');
+                message.success('报告下载成功');
+            } else {
+                message.error('下载报告失败：响应数据无效');
+            }
         } catch (error) {
             console.error('下载报告失败:', error);
             message.error('下载报告失败');
@@ -513,9 +514,7 @@ const ReportManagement: React.FC = () => {
     // 删除单个报告
     const handleDeleteReport = async (reportId: number) => {
         try {
-            await axios.delete(`/api/reports/${reportId}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            await apiService.delete(`/reports/${reportId}`);
             message.success('报告删除成功');
             fetchStoredReports();
         } catch (error) {
@@ -532,10 +531,7 @@ const ReportManagement: React.FC = () => {
         }
 
         try {
-            await axios.delete('/api/reports/batch', {
-                data: { report_ids: selectedReports },
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            await apiService.delete('/reports/batch', { data: { report_ids: selectedReports } });
             message.success('批量删除成功');
             setSelectedReports([]);
             fetchStoredReports();
@@ -553,19 +549,21 @@ const ReportManagement: React.FC = () => {
         }
 
         try {
-            const response = await axios.post('/api/reports/batch/download', selectedReports, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            // 注意endpoint应该为/reports/batch/download
+            const response = await apiService.create('/reports/batch/download', selectedReports);
 
             // 逐个下载报告
-            for (const link of response.data.download_links) {
-                const report = storedReports.find(r => r.id === link.report_id);
-                if (report) {
-                    handleDownloadStoredReport(report);
+            if (response && response.download_links) {
+                for (const link of response.download_links) {
+                    const report = storedReports.find(r => r.id === link.report_id);
+                    if (report) {
+                        handleDownloadStoredReport(report);
+                    }
                 }
+                message.success('批量下载已开始');
+            } else {
+                message.warning('未收到下载链接');
             }
-
-            message.success('批量下载已开始');
         } catch (error) {
             console.error('批量下载失败:', error);
             message.error('批量下载失败');

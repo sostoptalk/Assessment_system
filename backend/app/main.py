@@ -2282,8 +2282,14 @@ def calculate_user_paper_score(db, paper_id, user_id):
     big_dim_detail = []
     for big in big_dims:
         sub_dims = [d for d in small_dims if d.parent_id == big.id]
-        sub_scores = [small_dim_avg[d.id] for d in sub_dims]
-        avg = round(sum(sub_scores)/len(sub_scores), 2) if sub_scores else 0.0
+        
+        if sub_dims:  # 如果有小维度，则基于小维度计算大维度平均分
+            sub_scores = [small_dim_avg[d.id] for d in sub_dims]
+            avg = round(sum(sub_scores)/len(sub_scores), 2) if sub_scores else 0.0
+        else:  # 如果没有小维度，则直接计算该大维度下所有题目的平均分
+            big_dim_scores = small_dim_scores.get(big.id, [])
+            avg = round(sum(big_dim_scores)/len(big_dim_scores), 2) if big_dim_scores else 0.0
+        
         big_dim_avg[big.id] = avg
         big_dim_detail.append(ScoreDetail(
             name=big.name,
@@ -2291,11 +2297,10 @@ def calculate_user_paper_score(db, paper_id, user_id):
             sub_dimensions=[ScoreDetail(name=d.name, score=small_dim_avg[d.id]) for d in sub_dims]
         ))
 
-    # 8. 计算全卷平均分
-    all_scores = []
-    for scores in small_dim_scores.values():
-        all_scores.extend(scores)
-    total_score = round(sum(all_scores)/len(all_scores), 2) if all_scores else 0.0
+    # 8. 计算全卷平均分（所有大维度的平均分）
+    total_score = 0
+    if big_dim_avg:
+        total_score = round(sum(big_dim_avg.values()) / len(big_dim_avg), 2)
 
     return {
         "total_score": total_score,

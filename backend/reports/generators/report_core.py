@@ -25,6 +25,29 @@ class UniversalReportGenerator:
         self.config_dir.mkdir(exist_ok=True)
         self.template_dir.mkdir(exist_ok=True)
         
+        # 日志一下搜索路径
+        print(f"报告生成器配置目录: {self.config_dir}")
+        print(f"报告生成器模板目录: {self.template_dir}")
+        
+        # 检查备用路径
+        self.alt_config_dir = None
+        parent_dir = current_dir.parent.parent.parent
+        alt_path = parent_dir / "backend" / "reports" / "generators" / "configs"
+        if alt_path.exists():
+            self.alt_config_dir = alt_path
+            print(f"发现备用配置目录: {self.alt_config_dir}")
+            
+            # 尝试复制文件
+            try:
+                for file in alt_path.glob("*.yaml"):
+                    target_file = self.config_dir / file.name
+                    if not target_file.exists():
+                        import shutil
+                        shutil.copy2(file, target_file)
+                        print(f"已复制配置文件: {file.name}")
+            except Exception as e:
+                print(f"复制配置文件失败: {str(e)}")
+        
     def read_excel_data(self, excel_path: str, paper_id: int) -> List[Dict[str, Any]]:
         """
         根据试卷配置读取Excel数据

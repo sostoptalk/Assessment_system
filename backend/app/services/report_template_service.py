@@ -17,10 +17,50 @@ from reports.generators.template_components import (
 
 class ReportTemplateService:
     def __init__(self):
-        self.template_base_path = Path("backend/reports/generators/templates")
+        # 获取当前文件所在目录
+        current_dir = Path(__file__).parent.parent.parent
+        
+        # 设置正确的路径
+        self.template_base_path = current_dir / "reports" / "generators" / "templates"
         self.template_base_path.mkdir(exist_ok=True, parents=True)
-        self.config_base_path = Path("backend/reports/generators/configs")
+        self.config_base_path = current_dir / "reports" / "generators" / "configs"
         self.config_base_path.mkdir(exist_ok=True, parents=True)
+        
+        print(f"模板路径设置为: {self.template_base_path}")
+        print(f"配置路径设置为: {self.config_base_path}")
+        
+        # 检查并迁移旧路径中的配置文件
+        old_base_dir = current_dir / "backend"
+        if old_base_dir.exists():
+            old_config_path = old_base_dir / "reports" / "generators" / "configs"
+            old_template_path = old_base_dir / "reports" / "generators" / "templates"
+            self._migrate_files_if_needed(old_config_path, self.config_base_path)
+            self._migrate_files_if_needed(old_template_path, self.template_base_path)
+            
+    def _migrate_files_if_needed(self, old_path: Path, new_path: Path):
+        """将旧路径中的文件迁移到新路径
+        
+        Args:
+            old_path: 旧的文件路径
+            new_path: 新的文件路径
+        """
+        if old_path.exists():
+            print(f"发现旧路径: {old_path}，迁移文件到: {new_path}")
+            try:
+                # 确保目标目录存在
+                new_path.mkdir(exist_ok=True, parents=True)
+                
+                # 复制所有文件
+                for file in old_path.glob('*.*'):
+                    target_file = new_path / file.name
+                    if not target_file.exists():
+                        import shutil
+                        shutil.copy2(file, target_file)
+                        print(f"已复制文件: {file.name} 到 {target_file}")
+                    else:
+                        print(f"目标文件已存在，跳过: {target_file}")
+            except Exception as e:
+                print(f"迁移文件时出错: {str(e)}")
 
     def create_report_template(self, db: Session, template: ReportTemplateCreate) -> ReportTemplate:
         """创建新的报告模板"""
@@ -340,7 +380,7 @@ class ReportTemplateService:
             </div>
             
             <div class="footer">
-                <p>此报告由智能评测系统生成 &copy; {{now.year}} 测评系统</p>
+                <p>此报告由智能评测系统生成 {{ '&copy;' }} {{now.year}} 测评系统</p>
             </div>
         </div>
     </div>
@@ -481,6 +521,86 @@ class ReportTemplateService:
         """生成默认模板"""
         return generate_default_template()
     
+    # 添加设计器模板相关方法
+    def create_designer_template(self, db: Session, template_data: Dict[str, Any]) -> ReportTemplate:
+        """创建新的设计器模板
+        
+        Args:
+            db: 数据库会话
+            template_data: 模板数据，包含name、components和html_content
+            
+        Returns:
+            创建的模板对象
+        """
+        name = template_data.get('name')
+        if not name:
+            raise ValueError("模板名称不能为空")
+            
+        # 将组件列表和HTML内容保存到config字段
+        config = {
+            'components': template_data.get('components', []),
+            'html_content': template_data.get('html_content', ''),
+            'template_type': 'designer'  # 标记为设计器模板
+        }
+        
+        # 创建模板记录
+        db_template = ReportTemplate(
+            name=name,
+            paper_id=template_data.get('paper_id', 0),  # 默认使用0作为paper_id表示这是设计器模板
+            config=json.dumps(config, ensure_ascii=False),
+            yaml_config="template_type: designer\n"  # 简单的YAML配置，标记类型
+        )
+        
+        db.add(db_template)
+        db.commit()
+        db.refresh(db_template)
+        
+        return db_template
+    
+    def get_designer_templates(self, db: Session) -> List[ReportTemplate]:
+        """获取设计器模板列表
+        
+        Args:
+            db: 数据库会话
+            
+        Returns:
+            设计器模板列表
+        """
+        # 使用paper_id=0或通过配置中的template_type字段筛选设计器模板
+        templates = db.query(ReportTemplate).filter(ReportTemplate.paper_id == 0).all()
+        return templates
+    
+    def get_designer_template(self, db: Session, template_id: int) -> Optional[ReportTemplate]:
+        """获取单个设计器模板详情
+        
+        Args:
+            db: 数据库会话
+            template_id: 模板ID
+            
+        Returns:
+            设计器模板对象或None
+        """
+        template = db.query(ReportTemplate).filter(ReportTemplate.id == template_id).first()
+        return template
+    
+    def delete_designer_template(self, db: Session, template_id: int) -> bool:
+        """删除设计器模板
+        
+        Args:
+            db: 数据库会话
+            template_id: 模板ID
+            
+        Returns:
+            是否成功删除
+        """
+        template = self.get_designer_template(db, template_id)
+        if not template:
+            return False
+        
+        db.delete(template)
+        db.commit()
+        return True
+
     def _save_template_files(self, template: ReportTemplate) -> None:
         """保存模板文件到磁盘"""
         # 解析配置

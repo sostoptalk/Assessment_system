@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { Card, Button, Radio, Checkbox, Progress, message, Modal, List, Tag, Typography, Alert } from 'antd'
-import { ArrowLeftOutlined, ArrowRightOutlined, ClockCircleOutlined, FullscreenOutlined, FullscreenExitOutlined } from '@ant-design/icons'
+import { Card, Button, Radio, Checkbox, Progress, message, Modal, List, Tag, Typography, Alert, Space, Divider, Badge } from 'antd'
+import { ArrowLeftOutlined, ArrowRightOutlined, ClockCircleOutlined, FullscreenOutlined, FullscreenExitOutlined, CheckCircleFilled } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import React from 'react';
 
@@ -158,7 +158,14 @@ const Assessment = () => {
                 setTestStarted(true)
                 setTimeLeft(selectedAssignment!.duration * 60) // 转换为秒
                 message.success('测试开始成功')
-                enterFullscreen()
+
+                // 尝试进入全屏模式，如果失败也允许继续
+                try {
+                    enterFullscreen();
+                } catch (err) {
+                    console.error('全屏启动错误:', err);
+                    message.warning('全屏模式启动失败，请点击右上角全屏按钮手动进入全屏');
+                }
             } else {
                 const errorData = await response.json()
                 message.error(errorData.detail || '开始测试失败')
@@ -171,17 +178,32 @@ const Assessment = () => {
 
     // 进入全屏
     const enterFullscreen = () => {
-        if (fullscreenRef.current) {
+        if (!fullscreenRef.current) return;
+
+        try {
             if (fullscreenRef.current.requestFullscreen) {
                 fullscreenRef.current.requestFullscreen()
+                    .then(() => {
+                        setIsFullscreen(true);
+                    })
+                    .catch((err) => {
+                        console.error('全屏请求失败:', err);
+                        message.warning('全屏模式启动失败，请点击右上角全屏按钮手动进入全屏');
+                    });
             } else if ((fullscreenRef.current as any).webkitRequestFullscreen) {
-                (fullscreenRef.current as any).webkitRequestFullscreen()
+                (fullscreenRef.current as any).webkitRequestFullscreen();
+                setIsFullscreen(true);
             } else if ((fullscreenRef.current as any).msRequestFullscreen) {
-                (fullscreenRef.current as any).msRequestFullscreen()
+                (fullscreenRef.current as any).msRequestFullscreen();
+                setIsFullscreen(true);
+            } else {
+                message.warning('您的浏览器不支持自动全屏，请点击右上角全屏按钮手动进入全屏');
             }
+        } catch (error) {
+            console.error('全屏请求错误:', error);
+            message.warning('全屏模式启动失败，请点击右上角全屏按钮手动进入全屏');
         }
-        setIsFullscreen(true)
-    }
+    };
 
     // 退出全屏
     const exitFullscreen = () => {
@@ -226,6 +248,26 @@ const Assessment = () => {
                     })
                 } else {
                     setIsFullscreen(true)
+                    // 确保全屏元素可见
+                    if (fullscreenRef.current) {
+                        // 强制重绘并设置背景色
+                        fullscreenRef.current.style.backgroundColor = 'white'
+                        fullscreenRef.current.style.color = 'black'
+                        fullscreenRef.current.style.display = 'flex'
+
+                        // 延迟一点点时间以确保样式已应用
+                        setTimeout(() => {
+                            if (fullscreenRef.current) {
+                                // 触发重绘
+                                fullscreenRef.current.style.opacity = '0.99'
+                                setTimeout(() => {
+                                    if (fullscreenRef.current) {
+                                        fullscreenRef.current.style.opacity = '1'
+                                    }
+                                }, 50)
+                            }
+                        }, 10)
+                    }
                 }
             }
         }
@@ -284,6 +326,11 @@ const Assessment = () => {
     useEffect(() => {
         fetchAssignments()
     }, [])
+
+    // 在组件首次加载时添加全屏提示
+    useEffect(() => {
+        message.info('如果测试无法自动进入全屏，请在测试开始后点击右上角全屏按钮手动进入全屏模式', 5);
+    }, []);
 
     // 格式化时间
     const formatTime = (seconds: number) => {
@@ -430,6 +477,7 @@ const Assessment = () => {
     const handleAgreeToRules = () => {
         setAgreedToRules(true)
         setShowRules(false)
+        message.info('测试开始后请点击右上角全屏按钮进入全屏模式', 5);
     }
 
     // 开始测试时重置退出全屏计数
@@ -491,22 +539,72 @@ const Assessment = () => {
         if (!q) return null;
         if (q.type === 'single') {
             return (
-                <Radio.Group value={value[0]} onChange={e => onChange([e.target.value])}>
-                    {q.options?.map(option => (
-                        <Radio key={option.label} value={option.label} style={{ display: 'block', marginBottom: 16 }}>
-                            {option.label}. {option.text}
-                        </Radio>
-                    ))}
+                <Radio.Group
+                    value={value[0]}
+                    onChange={e => onChange([e.target.value])}
+                    style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        width: '100%'
+                    }}
+                >
+                    {q.options?.map(option => {
+                        const isChecked = value.includes(option.label);
+                        return (
+                            <Radio
+                                key={option.label}
+                                value={option.label}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    marginBottom: 16,
+                                    padding: '12px 16px',
+                                    borderRadius: '8px',
+                                    border: isChecked ? '1px solid #1890ff' : '1px solid #f0f0f0',
+                                    background: isChecked ? '#e6f7ff' : 'white',
+                                    boxShadow: isChecked ? '0 2px 8px rgba(24, 144, 255, 0.15)' : 'none',
+                                    transition: 'all 0.3s'
+                                }}
+                            >
+                                <span style={{ fontWeight: isChecked ? 600 : 500 }}>{option.label}.</span> {option.text}
+                            </Radio>
+                        );
+                    })}
                 </Radio.Group>
             );
         } else if (q.type === 'multiple' || q.type === 'indefinite') {
             return (
-                <Checkbox.Group value={value} onChange={onChange}>
-                    {q.options?.map(option => (
-                        <Checkbox key={option.label} value={option.label} style={{ display: 'block', marginBottom: 16 }}>
-                            {option.label}. {option.text}
-                        </Checkbox>
-                    ))}
+                <Checkbox.Group
+                    value={value}
+                    onChange={onChange}
+                    style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        width: '100%'
+                    }}
+                >
+                    {q.options?.map(option => {
+                        const isChecked = value.includes(option.label);
+                        return (
+                            <Checkbox
+                                key={option.label}
+                                value={option.label}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    marginBottom: 16,
+                                    padding: '12px 16px',
+                                    borderRadius: '8px',
+                                    border: isChecked ? '1px solid #1890ff' : '1px solid #f0f0f0',
+                                    background: isChecked ? '#e6f7ff' : 'white',
+                                    boxShadow: isChecked ? '0 2px 8px rgba(24, 144, 255, 0.15)' : 'none',
+                                    transition: 'all 0.3s'
+                                }}
+                            >
+                                <span style={{ fontWeight: isChecked ? 600 : 500 }}>{option.label}.</span> {option.text}
+                            </Checkbox>
+                        );
+                    })}
                 </Checkbox.Group>
             );
         }
@@ -638,7 +736,8 @@ const Assessment = () => {
                     <div style={{ marginBottom: 20 }}>
                         <Title level={4}>测试规则：</Title>
                         <ol>
-                            <li>测试开始后会打开全屏，测试结束前禁止退出全屏，三次退出全屏则终止测试</li>
+                            <li>测试开始后会尝试自动打开全屏，如果自动全屏失败，请点击右上角全屏按钮手动进入全屏模式</li>
+                            <li>测试结束前禁止退出全屏，三次退出全屏则终止测试</li>
                             <li>禁止复制题目内容</li>
                             <li>测试期间请勿刷新页面或关闭浏览器</li>
                             <li>请在规定时间内完成所有题目</li>
@@ -691,20 +790,30 @@ const Assessment = () => {
         const navButtons = flattenedAnswerableQuestions.map((q, index) => {
             const isAnswered = answers[q.id] && answers[q.id].length > 0;
             return (
-                <Button
+                <Badge
                     key={q.id}
-                    size="small"
-                    type={index === currentQuestion ? 'primary' : 'default'}
-                    style={{
-                        backgroundColor: isAnswered ? '#52c41a' : '#f0f0f0',
-                        color: isAnswered ? 'white' : 'black',
-                        border: index === currentQuestion ? '2px solid #1890ff' : '1px solid #d9d9d9',
-                        margin: 2
-                    }}
-                    onClick={() => handleQuestionClick(index)}
+                    count={isAnswered ? <CheckCircleFilled style={{ color: '#52c41a' }} /> : 0}
+                    offset={[-5, 5]}
                 >
-                    {index + 1}
-                </Button>
+                    <Button
+                        size="middle"
+                        type={index === currentQuestion ? 'primary' : 'default'}
+                        style={{
+                            width: '40px',
+                            height: '40px',
+                            margin: '6px',
+                            borderRadius: '8px',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            fontWeight: index === currentQuestion ? 'bold' : 'normal',
+                            boxShadow: index === currentQuestion ? '0 2px 8px rgba(24, 144, 255, 0.3)' : 'none'
+                        }}
+                        onClick={() => handleQuestionClick(index)}
+                    >
+                        {index + 1}
+                    </Button>
+                </Badge>
             );
         });
 
@@ -727,6 +836,16 @@ const Assessment = () => {
                     icon={<ArrowLeftOutlined />}
                     disabled={currentQuestion === 0}
                     onClick={handlePrev}
+                    style={{
+                        minWidth: '120px',
+                        height: '46px',
+                        borderRadius: '8px',
+                        fontSize: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px'
+                    }}
                 >
                     上一题
                 </Button>
@@ -735,6 +854,12 @@ const Assessment = () => {
                         type="primary"
                         loading={submitting}
                         onClick={handleSubmit}
+                        style={{
+                            minWidth: '120px',
+                            height: '46px',
+                            borderRadius: '8px',
+                            fontSize: '16px'
+                        }}
                     >
                         提交测评
                     </Button>
@@ -743,6 +868,16 @@ const Assessment = () => {
                         type="primary"
                         icon={<ArrowRightOutlined />}
                         onClick={handleNext}
+                        style={{
+                            minWidth: '120px',
+                            height: '46px',
+                            borderRadius: '8px',
+                            fontSize: '16px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px'
+                        }}
                     >
                         下一题
                     </Button>
@@ -758,18 +893,65 @@ const Assessment = () => {
                 <>
                     {/* 如果是案例子题，先显示案例背景 */}
                     {currentCaseBackground && (
-                        <div style={{ marginBottom: 32, border: '1px solid #e6f7ff', borderRadius: 8, background: '#f6fbff', padding: 24 }}>
-                            <div style={{ marginBottom: 16 }}>
-                                <Title level={4} style={{ color: '#1890ff' }}>案例背景</Title>
-                                <div style={{ fontSize: '16px', lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: currentCaseBackground.content }} />
+                        <div style={{
+                            marginBottom: 32,
+                            border: '1px solid #e6f7ff',
+                            borderRadius: '12px',
+                            background: 'linear-gradient(to right, #f0f7ff, #e6f7ff)',
+                            padding: '24px',
+                            boxShadow: '0 2px 8px rgba(24, 144, 255, 0.1)'
+                        }}>
+                            <div>
+                                <Title level={4} style={{ color: '#1890ff', marginBottom: '16px', display: 'flex', alignItems: 'center' }}>
+                                    <span style={{
+                                        display: 'inline-block',
+                                        width: '4px',
+                                        height: '18px',
+                                        background: '#1890ff',
+                                        marginRight: '8px',
+                                        borderRadius: '2px'
+                                    }}></span>
+                                    案例背景
+                                </Title>
+                                <div
+                                    style={{ fontSize: '16px', lineHeight: 1.7 }}
+                                    dangerouslySetInnerHTML={{ __html: currentCaseBackground.content }}
+                                />
                             </div>
                         </div>
                     )}
 
                     {/* 显示当前题目 */}
                     <div style={{ marginBottom: 32 }}>
-                        <Title level={4}>题目 {currentQuestion + 1}</Title>
-                        <div style={{ fontSize: '16px', lineHeight: 1.6, marginBottom: 24 }}>
+                        <Title level={4} style={{
+                            marginBottom: '24px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            color: '#262626'
+                        }}>
+                            <span style={{
+                                display: 'inline-flex',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                background: '#1890ff',
+                                color: 'white',
+                                marginRight: '12px',
+                                fontSize: '16px'
+                            }}>{currentQuestion + 1}</span>
+                            题目
+                        </Title>
+                        <div style={{
+                            fontSize: '16px',
+                            lineHeight: 1.6,
+                            marginBottom: 24,
+                            background: '#fafafa',
+                            padding: '16px',
+                            borderRadius: '8px',
+                            border: '1px solid #f0f0f0'
+                        }}>
                             <div dangerouslySetInnerHTML={{ __html: currentQ.content }} />
                         </div>
                         <div style={{ marginBottom: 24 }}>
@@ -778,29 +960,57 @@ const Assessment = () => {
                     </div>
 
                     {/* 底部按钮区域 */}
-                    {bottomButtons}
+                    <div style={{ padding: '16px 0' }}>
+                        {bottomButtons}
+                    </div>
                 </>
             );
         };
 
         return (
-            <div ref={fullscreenRef} style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+            <div ref={fullscreenRef} style={{
+                height: '100vh',
+                display: 'flex',
+                flexDirection: 'column',
+                backgroundColor: 'white',
+                color: 'black',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
                 {/* 顶部工具栏 */}
                 <div style={{
-                    padding: '16px',
-                    borderBottom: '1px solid #d9d9d9',
-                    backgroundColor: '#fafafa',
+                    padding: '16px 24px',
+                    borderBottom: '1px solid #e8e8e8',
+                    backgroundColor: '#fff',
                     display: 'flex',
                     justifyContent: 'space-between',
-                    alignItems: 'center'
+                    alignItems: 'center',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
+                    zIndex: 10
                 }}>
-                    <div>
-                        <Title level={4} style={{ margin: 0 }}>{selectedAssignment.paper_name}</Title>
-                        <Text type="secondary">第 {currentQuestion + 1} 题 / 共 {totalQuestions} 题</Text>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <img
+                            src="/纯logo.png"
+                            alt="公司Logo"
+                            style={{ height: '40px', marginRight: '16px' }}
+                        />
+                        <div>
+                            <Title level={4} style={{ margin: 0 }}>{selectedAssignment.paper_name}</Title>
+                            <Text type="secondary">第 {currentQuestion + 1} 题 / 共 {totalQuestions} 题</Text>
+                        </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '18px', fontWeight: 'bold', color: timeLeft < 300 ? '#ff4d4f' : '#1890ff' }}>
+                        <div style={{
+                            textAlign: 'center',
+                            background: timeLeft < 300 ? '#fff1f0' : '#e6f7ff',
+                            borderRadius: '8px',
+                            padding: '8px 16px'
+                        }}>
+                            <div style={{
+                                fontSize: '18px',
+                                fontWeight: 'bold',
+                                color: timeLeft < 300 ? '#ff4d4f' : '#1890ff'
+                            }}>
                                 <ClockCircleOutlined /> {formatTime(timeLeft)}
                             </div>
                             <div style={{ fontSize: '12px', color: '#666' }}>剩余时间</div>
@@ -808,33 +1018,151 @@ const Assessment = () => {
                         <Button
                             icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
                             onClick={isFullscreen ? exitFullscreen : enterFullscreen}
+                            type="default"
+                            size="large"
+                            style={{
+                                minWidth: '100px',
+                                height: '40px',
+                                borderRadius: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px'
+                            }}
                         >
                             {isFullscreen ? '退出全屏' : '全屏'}
                         </Button>
                     </div>
                 </div>
-                <div style={{ flex: 1, display: 'flex' }}>
+                <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}> {/* 添加overflow: hidden防止双重滚动条 */}
                     {/* 左侧题目列表 */}
                     <div style={{
-                        width: '300px',
-                        borderRight: '1px solid #d9d9d9',
-                        padding: '16px',
-                        overflowY: 'auto'
+                        width: '240px',
+                        borderRight: '1px solid #e8e8e8',
+                        background: 'linear-gradient(to bottom, #f9f9f9, #f0f0f0)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        zIndex: 5
                     }}>
-                        <Title level={5}>题目导航</Title>
-                        <div style={{ marginBottom: 8 }}>
-                            <Text type="secondary">已答题: {answeredQuestions}/{totalQuestions}</Text>
+                        <div style={{ padding: '16px', borderBottom: '1px solid #e8e8e8' }}>
+                            <Title level={5} style={{ margin: 0 }}>题目导航</Title>
+                            <div style={{ marginTop: 8 }}>
+                                <Progress
+                                    percent={Math.round((answeredQuestions / totalQuestions) * 100)}
+                                    size="small"
+                                    format={() => `${answeredQuestions}/${totalQuestions}`}
+                                    strokeColor={{
+                                        '0%': '#108ee9',
+                                        '100%': '#87d068',
+                                    }}
+                                />
+                            </div>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
-                            {navButtons}
+                        <div style={{
+                            padding: '16px',
+                            overflowY: 'auto',
+                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column'
+                        }}>
+                            <Text type="secondary" style={{ marginBottom: '8px' }}>点击数字跳转到对应题目</Text>
+                            <div style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                justifyContent: 'flex-start'
+                            }}>
+                                {navButtons}
+                            </div>
+                        </div>
+                        <div style={{
+                            padding: '16px',
+                            borderTop: '1px solid #e8e8e8',
+                            background: '#f9f9f9',
+                            textAlign: 'center'
+                        }}>
+                            <Space direction="vertical">
+                                <Text>完成情况</Text>
+                                <div style={{ display: 'flex', justifyContent: 'center', gap: '24px' }}>
+                                    <div style={{ textAlign: 'center' }}>
+                                        <div
+                                            style={{
+                                                backgroundColor: '#52c41a',
+                                                color: 'white',
+                                                minWidth: '30px',
+                                                height: '30px',
+                                                lineHeight: '30px',
+                                                borderRadius: '15px',
+                                                display: 'inline-block',
+                                                padding: '0 10px',
+                                                fontWeight: 'bold',
+                                                fontSize: '14px',
+                                                margin: '0 auto 5px auto'
+                                            }}
+                                        >
+                                            {answeredQuestions}
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: '#666' }}>已答题</div>
+                                    </div>
+                                    <div style={{ textAlign: 'center' }}>
+                                        <div
+                                            style={{
+                                                backgroundColor: '#999',
+                                                color: 'white',
+                                                minWidth: '30px',
+                                                height: '30px',
+                                                lineHeight: '30px',
+                                                borderRadius: '15px',
+                                                display: 'inline-block',
+                                                padding: '0 10px',
+                                                fontWeight: 'bold',
+                                                fontSize: '14px',
+                                                margin: '0 auto 5px auto'
+                                            }}
+                                        >
+                                            {totalQuestions - answeredQuestions}
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: '#666' }}>未答题</div>
+                                    </div>
+                                </div>
+                            </Space>
                         </div>
                     </div>
                     {/* 右侧题目内容 */}
-                    <div style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
-                        <div style={{ marginBottom: 24 }}>
-                            <Progress percent={((currentQuestion + 1) / totalQuestions) * 100} />
+                    <div style={{
+                        flex: 1,
+                        height: '100%', // 确保占满剩余高度
+                        display: 'flex',
+                        flexDirection: 'column',
+                        backgroundColor: 'white',
+                        zIndex: 5
+                    }}>
+                        <div style={{
+                            padding: '24px 40px',
+                            overflowY: 'auto', // 这个区域添加滚动条
+                            flex: 1 // 允许内容区域伸展填充
+                        }}>
+                            <div style={{ marginBottom: 24 }}>
+                                <Progress
+                                    percent={((currentQuestion + 1) / totalQuestions) * 100}
+                                    strokeColor={{
+                                        '0%': '#108ee9',
+                                        '100%': '#87d068',
+                                    }}
+                                    size="small"
+                                />
+                            </div>
+                            <div style={{
+                                maxWidth: '900px',
+                                margin: '0 auto',
+                                background: '#fff',
+                                padding: '24px',
+                                borderRadius: '12px',
+                                boxShadow: '0 2px 12px rgba(0, 0, 0, 0.05)',
+                                width: '100%'
+                            }}>
+                                {renderCurrentQuestion()}
+                            </div>
                         </div>
-                        {renderCurrentQuestion()}
                     </div>
                 </div>
             </div>

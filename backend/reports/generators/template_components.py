@@ -314,6 +314,376 @@ DEFAULT_COMPONENTS = {
 <!-- /component -->
 """
         }
+    },
+
+    # 添加新的表格组件类型
+    "table": {
+        "basic_table": {
+            "name": "基本表格",
+            "description": "简单的维度得分表格",
+            "html": """
+<!-- component:table id:basic_table -->
+<div style="margin: 20px 0;">
+    <h3 style="color: #2c3e50; margin-bottom: 15px;">{{ table_title|default('维度得分表') }}</h3>
+    <table style="width: 100%; border-collapse: collapse; border: 1px solid #e0e0e0;">
+        <thead>
+            <tr style="background-color: #f2f6fa;">
+                <th style="padding: 10px; text-align: left; border: 1px solid #e0e0e0;">维度</th>
+                <th style="padding: 10px; text-align: center; border: 1px solid #e0e0e0;">得分</th>
+                <th style="padding: 10px; text-align: center; border: 1px solid #e0e0e0;">评级</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for dim in dimensions %}
+            <tr>
+                <td style="padding: 10px; border: 1px solid #e0e0e0;">{{ dim.name }}</td>
+                <td style="padding: 10px; text-align: center; border: 1px solid #e0e0e0; font-weight: bold; color: #3498db;">{{ dim.score|round(1) }}</td>
+                <td style="padding: 10px; text-align: center; border: 1px solid #e0e0e0;">
+                    {% if dim.score >= 8.5 %}
+                    <span style="color: #27ae60;">优秀</span>
+                    {% elif dim.score >= 7.5 %}
+                    <span style="color: #3498db;">良好</span>
+                    {% elif dim.score >= 6.5 %}
+                    <span style="color: #f39c12;">一般</span>
+                    {% else %}
+                    <span style="color: #e74c3c;">待提升</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<!-- /component -->
+"""
+        },
+        "detailed_table": {
+            "name": "详细表格",
+            "description": "带子维度的详细得分表格",
+            "html": """
+<!-- component:table id:detailed_table -->
+<div style="margin: 20px 0;">
+    <h3 style="color: #2c3e50; margin-bottom: 15px;">{{ table_title|default('维度得分详情表') }}</h3>
+    <table style="width: 100%; border-collapse: collapse; border: 1px solid #e0e0e0;">
+        <thead>
+            <tr style="background-color: #f2f6fa;">
+                <th style="padding: 10px; text-align: left; border: 1px solid #e0e0e0;">维度/子维度</th>
+                <th style="padding: 10px; text-align: center; border: 1px solid #e0e0e0;">得分</th>
+                <th style="padding: 10px; text-align: center; border: 1px solid #e0e0e0;">评级</th>
+                <th style="padding: 10px; text-align: left; border: 1px solid #e0e0e0;">描述</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for dim in dimensions %}
+            <tr style="background-color: #f9f9f9;">
+                <td style="padding: 10px; border: 1px solid #e0e0e0; font-weight: bold;">{{ dim.name }}</td>
+                <td style="padding: 10px; text-align: center; border: 1px solid #e0e0e0; font-weight: bold; color: #3498db;">{{ dim.score|round(1) }}</td>
+                <td style="padding: 10px; text-align: center; border: 1px solid #e0e0e0;">
+                    {% if dim.score >= 8.5 %}
+                    <span style="color: #27ae60;">优秀</span>
+                    {% elif dim.score >= 7.5 %}
+                    <span style="color: #3498db;">良好</span>
+                    {% elif dim.score >= 6.5 %}
+                    <span style="color: #f39c12;">一般</span>
+                    {% else %}
+                    <span style="color: #e74c3c;">待提升</span>
+                    {% endif %}
+                </td>
+                <td style="padding: 10px; border: 1px solid #e0e0e0;">
+                    {% if dimension_evaluations[dim.name] %}
+                    {{ dimension_evaluations[dim.name].dimension_eval|truncate(60) }}
+                    {% endif %}
+                </td>
+            </tr>
+            {% if dim.subs %}
+                {% for sub_name, sub_data in dim.subs.items() %}
+                <tr>
+                    <td style="padding: 10px; padding-left: 30px; border: 1px solid #e0e0e0; font-style: italic;">{{ sub_name }}</td>
+                    <td style="padding: 10px; text-align: center; border: 1px solid #e0e0e0; color: #3498db;">{{ sub_data.score|round(1) }}</td>
+                    <td style="padding: 10px; text-align: center; border: 1px solid #e0e0e0;">
+                        {% if sub_data.score >= 8.5 %}
+                        <span style="color: #27ae60;">优秀</span>
+                        {% elif sub_data.score >= 7.5 %}
+                        <span style="color: #3498db;">良好</span>
+                        {% elif sub_data.score >= 6.5 %}
+                        <span style="color: #f39c12;">一般</span>
+                        {% else %}
+                        <span style="color: #e74c3c;">待提升</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 10px; border: 1px solid #e0e0e0; font-size: 0.9em;">
+                        {% if sub_data.evaluation %}
+                        {{ sub_data.evaluation.潜质特点|truncate(50) }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<!-- /component -->
+"""
+        }
+    },
+
+    # 添加新的评分卡组件类型
+    "scorecard": {
+        "modern": {
+            "name": "现代评分卡",
+            "description": "现代风格的评分卡",
+            "html": """
+<!-- component:scorecard id:modern_scorecard -->
+<div style="margin: 20px 0; padding: 20px; background-color: #f9f9f9; border-radius: 8px;">
+    <h3 style="color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 10px;">{{ scorecard_title|default('测评结果评分卡') }}</h3>
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div>
+            <h4 style="margin: 0; color: #2c3e50;">{{ user_info.name }}</h4>
+            <p style="margin: 5px 0 0 0; color: #7f8c8d;">{{ user_info.department }} / {{ user_info.position }}</p>
+        </div>
+        <div style="text-align: right;">
+            <div style="font-size: 24px; font-weight: bold; color: 
+            {% if user_info.total_score >= 8.5 %}#27ae60
+            {% elif user_info.total_score >= 7.5 %}#3498db
+            {% elif user_info.total_score >= 6.5 %}#f39c12
+            {% else %}#e74c3c{% endif %};">
+                {{ user_info.total_score|round(1) }}
+            </div>
+            <div style="color: #7f8c8d;">总分</div>
+        </div>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-top: 20px;">
+        {% for dim in dimensions %}
+        <div style="padding: 15px; background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="font-weight: bold; color: #2c3e50;">{{ dim.name }}</div>
+                <div style="font-size: 18px; font-weight: bold; color: 
+                {% if dim.score >= 8.5 %}#27ae60
+                {% elif dim.score >= 7.5 %}#3498db
+                {% elif dim.score >= 6.5 %}#f39c12
+                {% else %}#e74c3c{% endif %};">
+                    {{ dim.score|round(1) }}
+                </div>
+            </div>
+            
+            <div style="margin-top: 10px;">
+                <div style="height: 6px; background-color: #f1f1f1; border-radius: 3px; overflow: hidden;">
+                    <div style="height: 100%; width: {{ (dim.score / 10) * 100 }}%; background: 
+                    {% if dim.score >= 8.5 %}#27ae60
+                    {% elif dim.score >= 7.5 %}#3498db
+                    {% elif dim.score >= 6.5 %}#f39c12
+                    {% else %}#e74c3c{% endif %};"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 12px; color: #7f8c8d;">
+                    <span>0</span>
+                    <span>5</span>
+                    <span>10</span>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+<!-- /component -->
+"""
+        },
+        "comparison": {
+            "name": "对比评分卡",
+            "description": "带对比功能的评分卡",
+            "html": """
+<!-- component:scorecard id:comparison_scorecard -->
+<div style="margin: 20px 0; padding: 20px; background-color: #f9f9f9; border-radius: 8px;">
+    <h3 style="color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 10px;">{{ scorecard_title|default('能力对比评分卡') }}</h3>
+    
+    <div style="margin-bottom: 20px;">
+        <div style="display: flex; margin-bottom: 5px; align-items: center;">
+            <span style="width: 30%; font-weight: bold;">维度</span>
+            <span style="width: 40%;">能力水平</span>
+            <span style="width: 15%; text-align: center;">个人</span>
+            <span style="width: 15%; text-align: center; color: #7f8c8d;">平均</span>
+        </div>
+        
+        {% for dim in dimensions %}
+        <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
+            <div style="display: flex; margin-bottom: 5px; align-items: center;">
+                <span style="width: 30%; font-weight: bold;">{{ dim.name }}</span>
+                <div style="width: 40%; position: relative; height: 20px; background-color: #f1f1f1; border-radius: 10px;">
+                    <!-- 平均值标记 -->
+                    <div style="position: absolute; left: {{ (7 / 10) * 100 }}%; top: 0; bottom: 0; width: 2px; background-color: #95a5a6;"></div>
+                    <!-- 得分进度条 -->
+                    <div style="position: absolute; left: 0; top: 0; bottom: 0; width: {{ (dim.score / 10) * 100 }}%; background: 
+                    {% if dim.score >= 8.5 %}#27ae60
+                    {% elif dim.score >= 7.5 %}#3498db
+                    {% elif dim.score >= 6.5 %}#f39c12
+                    {% else %}#e74c3c{% endif %}; 
+                    border-radius: 10px;"></div>
+                </div>
+                <span style="width: 15%; text-align: center; font-weight: bold; color:
+                {% if dim.score >= 8.5 %}#27ae60
+                {% elif dim.score >= 7.5 %}#3498db
+                {% elif dim.score >= 6.5 %}#f39c12
+                {% else %}#e74c3c{% endif %};">
+                    {{ dim.score|round(1) }}
+                </span>
+                <span style="width: 15%; text-align: center; color: #7f8c8d;">7.0</span>
+            </div>
+            
+            <!-- 子维度展示 -->
+            {% if dim.subs %}
+            <div style="margin-left: 30px;">
+                {% for sub_name, sub_data in dim.subs.items() %}
+                <div style="display: flex; margin-top: 8px; align-items: center; font-size: 0.9em;">
+                    <span style="width: 30%; color: #7f8c8d;">{{ sub_name }}</span>
+                    <div style="width: 40%; position: relative; height: 15px; background-color: #f1f1f1; border-radius: 7px;">
+                        <!-- 平均值标记 -->
+                        <div style="position: absolute; left: {{ (7 / 10) * 100 }}%; top: 0; bottom: 0; width: 2px; background-color: #95a5a6;"></div>
+                        <!-- 得分进度条 -->
+                        <div style="position: absolute; left: 0; top: 0; bottom: 0; width: {{ (sub_data.score / 10) * 100 }}%; background: 
+                        {% if sub_data.score >= 8.5 %}#27ae60
+                        {% elif sub_data.score >= 7.5 %}#3498db
+                        {% elif sub_data.score >= 6.5 %}#f39c12
+                        {% else %}#e74c3c{% endif %}; 
+                        border-radius: 7px;"></div>
+                    </div>
+                    <span style="width: 15%; text-align: center; color:
+                    {% if sub_data.score >= 8.5 %}#27ae60
+                    {% elif sub_data.score >= 7.5 %}#3498db
+                    {% elif sub_data.score >= 6.5 %}#f39c12
+                    {% else %}#e74c3c{% endif %};">
+                        {{ sub_data.score|round(1) }}
+                    </span>
+                    <span style="width: 15%; text-align: center; color: #7f8c8d;">7.0</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    
+    <div style="font-size: 12px; color: #7f8c8d; text-align: right; margin-top: 10px;">
+        注：平均值基于同级别/同岗位人员的历史数据
+    </div>
+</div>
+<!-- /component -->
+"""
+        }
+    },
+
+    # 添加新的个人信息卡组件
+    "profile": {
+        "simple": {
+            "name": "简洁个人信息",
+            "description": "简洁的个人信息卡片",
+            "html": """
+<!-- component:profile id:simple_profile -->
+<div style="margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-radius: 5px; border: 1px solid #e9ecef;">
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="width: 20%; padding: 8px; color: #6c757d;">姓名</td>
+            <td style="width: 30%; padding: 8px; font-weight: bold;">{{ user_info.name }}</td>
+            <td style="width: 20%; padding: 8px; color: #6c757d;">部门</td>
+            <td style="width: 30%; padding: 8px;">{{ user_info.department }}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; color: #6c757d;">职位</td>
+            <td style="padding: 8px;">{{ user_info.position }}</td>
+            <td style="padding: 8px; color: #6c757d;">测评日期</td>
+            <td style="padding: 8px;">{{ user_info.test_date }}</td>
+        </tr>
+    </table>
+</div>
+<!-- /component -->
+"""
+        },
+        "detailed": {
+            "name": "详细个人信息",
+            "description": "包含更多字段的个人信息展示",
+            "html": """
+<!-- component:profile id:detailed_profile -->
+<div style="margin: 20px 0; padding: 20px; background-color: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+    <h3 style="color: #2c3e50; margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;">{{ profile_title|default('个人信息') }}</h3>
+    
+    <div style="display: flex; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 300px; padding: 10px;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="width: 30%; padding: 8px; color: #6c757d; vertical-align: top;">姓名</td>
+                    <td style="padding: 8px; font-weight: bold;">{{ user_info.name }}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; color: #6c757d; vertical-align: top;">部门</td>
+                    <td style="padding: 8px;">{{ user_info.department }}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; color: #6c757d; vertical-align: top;">职位</td>
+                    <td style="padding: 8px;">{{ user_info.position }}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; color: #6c757d; vertical-align: top;">工作年限</td>
+                    <td style="padding: 8px;">{{ user_info.work_years|default('--') }}</td>
+                </tr>
+            </table>
+        </div>
+        
+        <div style="flex: 1; min-width: 300px; padding: 10px;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="width: 30%; padding: 8px; color: #6c757d; vertical-align: top;">测评名称</td>
+                    <td style="padding: 8px;">{{ paper_name|default('综合能力测评') }}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; color: #6c757d; vertical-align: top;">测评日期</td>
+                    <td style="padding: 8px;">{{ user_info.test_date }}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; color: #6c757d; vertical-align: top;">报告编号</td>
+                    <td style="padding: 8px;">{{ report_id|default('--') }}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px; color: #6c757d; vertical-align: top;">总分评级</td>
+                    <td style="padding: 8px;">
+                        <span style="padding: 2px 10px; border-radius: 12px; font-size: 12px; color: white; background-color:
+                        {% if user_info.total_score >= 8.5 %}#27ae60
+                        {% elif user_info.total_score >= 7.5 %}#3498db
+                        {% elif user_info.total_score >= 6.5 %}#f39c12
+                        {% else %}#e74c3c{% endif %};">
+                        {% if user_info.total_score >= 8.5 %}优秀
+                        {% elif user_info.total_score >= 7.5 %}良好
+                        {% elif user_info.total_score >= 6.5 %}一般
+                        {% else %}待提升{% endif %}
+                        </span>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </div>
+</div>
+<!-- /component -->
+"""
+        }
+    },
+
+    # 添加注意事项组件
+    "notice": {
+        "disclaimer": {
+            "name": "报告免责声明",
+            "description": "测评报告的免责声明",
+            "html": """
+<!-- component:notice id:disclaimer -->
+<div style="margin: 20px 0; padding: 15px; background-color: #fff8e1; border-left: 4px solid #ffb300; border-radius: 0 5px 5px 0;">
+    <h4 style="color: #bf9800; margin-top: 0;">{{ notice_title|default('报告说明') }}</h4>
+    <div style="font-size: 0.9em; line-height: 1.6;">
+        <p>{{ disclaimer_content|default('本测评报告结果基于被测者提供的信息，仅作参考之用。报告内容不作为考核的唯一依据，建议与其他测评方法和实际工作表现相结合进行综合评估。') }}</p>
+        <p style="margin-top: 10px; font-size: 0.9em;">报告内容严格保密，仅供被授权人员查阅。如有问题请联系人力资源部门。</p>
+    </div>
+</div>
+<!-- /component -->
+"""
+        }
     }
 }
 

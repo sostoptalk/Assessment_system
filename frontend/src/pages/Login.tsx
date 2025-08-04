@@ -87,7 +87,7 @@ const Login = () => {
                         {/* 修正logo路径 */}
                         <img
                             src="/logo.png"
-                            alt="中量工程咨询有限公司"
+                            alt="中量建设管理集团"
                             style={{
                                 width: '80px',
                                 height: '80px',
@@ -99,7 +99,7 @@ const Login = () => {
                             margin: 0,
                             fontSize: '20px',
                             color: '#333'
-                        }}>中量工程咨询有限公司</h2>
+                        }}>中量建设管理集团</h2>
                         <p style={{
                             margin: '5px 0 0 0',
                             fontSize: '16px',

@@ -275,7 +275,8 @@ const ReportTemplateManagement: React.FC = () => {
                 const formValues = form.getFieldsValue();
                 const config = {
                     ...formValues,
-                    html_content: htmlContent // 设计器生成的HTML内容
+                    html_content: htmlContent, // 设计器生成的HTML内容
+                    components: templateComponents // 保存组件数据
                 };
 
                 const payload = {
@@ -320,7 +321,8 @@ const ReportTemplateManagement: React.FC = () => {
                 yaml_config: yamlContent,
                 config: {
                     ...values,
-                    html_content: htmlContent || '<div>默认模板内容</div>' // 添加HTML内容
+                    html_content: htmlContent || '<div>默认模板内容</div>', // 添加HTML内容
+                    components: templateComponents // 保存组件数据
                 }
             };
 
@@ -594,25 +596,37 @@ const ReportTemplateManagement: React.FC = () => {
 
             // 处理HTML内容
             let htmlContent = '';
+            let templateComponents = [];
             try {
                 const config = templateDetail.config;
                 if (config) {
+                    let parsedConfig;
                     if (typeof config === 'string') {
                         try {
-                            const parsedConfig = JSON.parse(config);
-                            htmlContent = parsedConfig.html_content || '';
+                            parsedConfig = JSON.parse(config);
                         } catch (e) {
                             console.error('解析config字符串失败:', e);
                         }
-                    } else if (typeof config === 'object') {
-                        htmlContent = config.html_content || '';
+                    } else {
+                        parsedConfig = config;
+                    }
+
+                    if (parsedConfig) {
+                        htmlContent = parsedConfig.html_content || '';
+                        // 如果存在组件数据，保存它们
+                        if (parsedConfig.components && Array.isArray(parsedConfig.components)) {
+                            templateComponents = parsedConfig.components;
+                        }
                     }
                 }
                 setHtmlContent(htmlContent);
+                setTemplateComponents(templateComponents); // 保存组件数据
                 console.log('已设置HTML内容，长度:', htmlContent.length);
+                console.log('已设置组件数据，数量:', templateComponents.length);
             } catch (error) {
                 console.error('处理模板HTML内容失败:', error);
                 setHtmlContent('');
+                setTemplateComponents([]);
             }
 
             setActiveTab('basic');
@@ -629,6 +643,7 @@ const ReportTemplateManagement: React.FC = () => {
         form.resetFields();
         setYamlContent('');
         setHtmlContent('');
+        setTemplateComponents([]); // 重置组件数据
         setActiveTab('basic');
         setModalVisible(true);
     };
@@ -776,6 +791,7 @@ const ReportTemplateManagement: React.FC = () => {
                                     <TemplateDesigner
                                         onSave={handleDesignerSave}
                                         paperConfig={{ dimensions }}
+                                        initialComponents={templateComponents}
                                     />
                                 </div>
                             )
